@@ -34,5 +34,6 @@ _shot_import.py
 Screenshot/
 
 # 临时调试脚本 / 副本（不入库）
+_*.py
 web/_*.py
 test copy.py
