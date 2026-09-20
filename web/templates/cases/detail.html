@@ -1,0 +1,596 @@
+{% extends 'base.html' %}
+{% block title %}{{ case.tcid }} - 用例详情{% endblock %}
+{% block extra_css %}
+<style>
+    .steptable .col-drag { width: 34px; text-align: center; color: #b9b7e6; cursor: grab; }
+    .steptable .col-drag .handle { user-select: none; font-size: 15px; }
+    .steptable tr.dragging { opacity: .5; }
+    .steptable .col-data { min-width: 190px; }
+    .subpanel { margin-top: 16px; border-top: 1px dashed #e3e3df; padding-top: 14px; }
+    .subpanel .chk { display: inline-flex; align-items: center; gap: 4px; margin-right: 14px;
+                     font-size: 13px; color: #3d3d3a; font-weight: 400; }
+    .subpanel .chk input { width: auto; }
+    .hint-box { background: #f7f6ff; border: 1px solid #e7e4fb; border-radius: 8px;
+                padding: 10px 14px; font-size: 13px; color: #4a4670; margin-bottom: 14px; }
+    .table-scroll { overflow-x: auto; padding-bottom: 4px; }
+    /* 静态校验标红：这一步十有八九会执行失败 */
+    .steptable tr.has-error { background: #fff5f5; }
+    .steptable tr.has-error td { border-bottom-color: #f3c9c9; }
+    .steptable .bad-input { border-color: #e08a8a !important; box-shadow: 0 0 0 2px #fdeaea; }
+    .issue-list { margin: 0; padding-left: 18px; font-size: 13px; line-height: 1.8; }
+    .issue-list li.error { color: #b03030; }
+    .issue-list li.warn { color: #8a6d1a; }
+    .issue-box { border-radius: 8px; padding: 10px 14px; margin-bottom: 12px; font-size: 13px; }
+    .issue-box.bad { background: #fff5f5; border: 1px solid #f3c9c9; }
+    .issue-box.warn { background: #fffbf0; border: 1px solid #f0e0b8; }
+    .snap-row td { font-size: 13px; }
+    .snap-steps code { background: #f4f3fa; padding: 1px 5px; border-radius: 4px; }
+    /* 字段说明：圈+问号，悬停或点击展示解释语 */
+    .kw-help { display:inline-flex; align-items:center; justify-content:center;
+               width:15px; height:15px; margin-left:6px; border-radius:50%;
+               background:#9b96e0; color:#fff; font-size:11px; font-weight:700; line-height:1;
+               cursor:help; vertical-align:middle; user-select:none; }
+    .kw-help:hover { background:#6c63c4; }
+    .help-pop { position:fixed; max-width:260px; padding:10px 12px; background:#33323a;
+                color:#fff; font-size:12px; line-height:1.7; border-radius:8px; z-index:9999;
+                box-shadow:0 8px 22px rgba(0,0,0,.25); white-space:normal; }
+</style>
+{% endblock %}
+
+{% block content %}
+    <div class="card-head" data-page-node-id="pd4k9BZjZwsnbQjKCOivaa">
+        <h2 data-page-node-id="22659fqXsDJtyXgVeCblFr">
+            <span class="mono" data-page-node-id="NnsPAmGws3TLhOPMPTtg6Y">{{ case.tcid }}</span> · {{ case.name }}
+            {% if case.need_run %}<span class="tag on" data-page-node-id="SxecG4mgbR1XnSLJdhAVNX">启用</span>{% else %}<span class="tag" data-page-node-id="kvmCOTRuCy7Ad6nAeXHYit">停用</span>{% endif %}
+        </h2>
+        <div class="btn-row" data-page-node-id="od7Wg26A8F5prmRPkfT1l3">
+            <a class="btn" href="{% url 'cases:case_edit' case.pk %}" data-page-node-id="ErmqthhnC8lWbaWP87mzH7">编辑属性</a>
+            <form class="inline" method="post" action="{% url 'runner:run_start_case' case.pk %}" data-page-node-id="m01IFmy6jCqNcDOXnWU36p">
+                {% csrf_token %}
+                <button class="btn primary" type="submit" data-page-node-id="mjg3C53YhoAHEiOReNMJDj">执行此用例</button>
+            </form>
+            <a class="btn" href="{% url 'cases:case_list' %}" data-page-node-id="r2ufGyA1Tw6L5AdiwrKxt5">返回列表</a>
+        </div>
+    </div>
+
+    <div class="card" data-page-node-id="SnY1tpCJvw2rgBDqGO8eyT">
+        <p class="muted" data-page-node-id="Fa4XSBKe7AUGduHe0Kn0Ya">{{ case.description|default:'（无描述）' }}</p>
+    </div>
+
+    <!-- ================= 测试步骤（一张表写完整个用例） ================= -->
+    <div class="card" data-page-node-id="P8M2lszbVjWv4aQQAmQRTy">
+        <div class="card-head" data-page-node-id="kKopLBFlELBYb1EkqZNrxf">
+            <h2 data-page-node-id="YZvu6joD4i7xZlPRWwGrzG">测试步骤（{{ steps_view|length }} 步）</h2>
+            <div class="btn-row" data-page-node-id="frKCnjUmB3R9wE1LeawspW">
+                <button class="btn sm" type="button" onclick="togglePanel('copyPanel')" data-page-node-id="JnurIU1zUvWisJhQrR2dDG">从其他用例复制</button>
+                <button class="btn sm" type="button" onclick="addStep()" data-page-node-id="oRv6KLfqz3nKJ5VoAEgwY4">+ 增加一行</button>
+                <button class="btn sm primary" type="button" onclick="submitSteps()" data-page-node-id="JUxW69BsdGtw6OiJr40xeS">保存</button>
+            </div>
+        </div>
+
+        {% if err_count or warn_count %}
+            <div class="issue-box {% if err_count %}bad{% else %}warn{% endif %}">
+                <strong>静态校验：{{ err_count }} 处问题{% if warn_count %}，{{ warn_count }} 处提示{% endif %}</strong>
+                <span class="muted" style="margin-left:8px">（保存不会被拦截，但标红的行执行时大概率会失败）</span>
+                <ul class="issue-list">
+                    {% for it in issues %}
+                        <li class="{{ it.level }}">
+                            {% if it.step_no %}第 {{ it.step_no }} 行{% if it.keyword %}（{{ it.keyword }}）{% endif %}：{% endif %}{{ it.message }}
+                        </li>
+                    {% endfor %}
+                </ul>
+            </div>
+        {% endif %}
+
+        <div class="table-scroll" data-page-node-id="ANQhcsUhzerilolqPXiuzI">
+            <form id="stepForm" method="post" action="{% url 'cases:steps_save' case.pk %}" data-page-node-id="pI4217UGel9v2oHfLpWRuV">
+                {% csrf_token %}
+                <table class="steptable" id="stepTable" data-page-node-id="CbnOmanQHkcuSOGAxcGcx9">
+                    <thead data-page-node-id="BfZoMPKXjaDEC4uJ6AGW5D">
+                        <tr data-page-node-id="iyKPu88hMxgzWG7Ss7tUGR">
+                            <th class="col-drag" data-page-node-id="Lfxn1Fq7MpGB4ZyF23uenL">拖拽</th>
+                            <th class="col-no" data-page-node-id="Ofz3W2wTatmDwEMmgG8wzs">#</th>
+                            <th class="col-run" data-page-node-id="6MQhtxhak3ZGmPxHGH6bob">执行</th>
+                            <th data-page-node-id="Udxqhd0GoWslgP5lhAlA3W">步骤描述</th>
+                            <th class="col-kw" data-page-node-id="HQIZcAnXfatZqyXa2xoFeH">关键字<span class="kw-help" data-help="这一步要执行的动作类型，例如 input 输入文本、click 点击、assert* 断言、open_url 打开网页。选不同关键字，右侧「操作值」列的填写内容会自动变化。">?</span></th>
+                            <th class="col-type" data-page-node-id="GQF6NHeG1uPTJPXWzhdZr9">定位方式<span class="kw-help" data-help="在页面或窗口里如何找到目标元素，例如 xpath、id、css、name。要与「定位表达式」搭配使用；不需要定位的关键字（如 open_browser、maxwindow）可留空。">?</span></th>
+                            <th data-page-node-id="nyDU4nEykIk9NX1GRSBsUO">定位表达式<span class="kw-help" data-help="定位方式对应的具体值，例如 //*[@id='u1'] 或 kw。框架按它去精确定位元素；不需要定位的关键字此格留空。">?</span></th>
+                            <th class="col-data" data-page-node-id="WJ1aeNIOnrc4a2oiosdK10">操作值<span class="kw-help" data-help="这一步真正用到的数据，例如 input 的「输入值」、selectby* 的「选择值」、assert* 的「期望值」、sleep 的「秒数」。不需要数据的关键字（click 等）此格显示「—」且不可填。">?</span></th>
+                            <th class="col-op" data-page-node-id="ZRsDXxlG9NdQ2dTGTpOnjy">操作</th>
+                        </tr>
+                    </thead>
+                    <tbody id="stepBody" data-page-node-id="l6akRQuypZNWGCiD2Yq9P4">
+                        {% for r in steps_view %}
+                            <tr data-kind="{{ r.kind }}"{% if r.has_error %} class="has-error"{% endif %}
+                                {% if r.issues %}title="{% for it in r.issues %}[{{ it.level }}] {{ it.message }}&#10;{% endfor %}"{% endif %}>
+                                <td class="col-drag" data-page-node-id="Jg760QLPav6BLMRgPVJtlO"><span class="handle" title="拖拽排序" draggable="true" data-page-node-id="ge3EfztncBOfz8y1f3WfTm">⠿</span></td>
+                                <td class="col-no" data-page-node-id="IgF7tmeNl7ewWnRYoM4yap">{{ forloop.counter }}</td>
+                                <td class="col-run" data-page-node-id="CQkGHRixkVh67jAG135H5x">
+                                    <input type="hidden" name="s_run" value="{% if r.step.need_run %}y{% else %}n{% endif %}" data-page-node-id="0qEhAOInKtlwq30oH7ZHSj">
+                                    <input type="checkbox" {% if r.step.need_run %}checked{% endif %}
+                                           onchange="this.previousElementSibling.value = this.checked ? 'y' : 'n'" style="width:auto" data-page-node-id="gssrTkNWGfrCzVZcB7yeoq">
+                                </td>
+                                <td><input type="text" name="s_desc" value="{{ r.step.description }}" placeholder="如：输入账号"{% if 'desc' in r.bad %} class="bad-input" title="建议补一句描述"{% endif %}></td>
+                                <td data-page-node-id="WvSAJ63YqJRgQaIhWR7EGH">
+                                    <select name="s_kw" onchange="kwChange(this)"{% if 'kw' in r.bad %} class="bad-input" title="必须选择一个关键字"{% endif %}>
+                                        <option value="" data-page-node-id="L2hSXCrUFPF7K1fr7wqIGj">-- 选择关键字 --</option>
+                                        {% for group in keyword_groups %}
+                                            <optgroup label="{{ group.name }}" data-page-node-id="CYyLBsjKL4e53KBIMQ9pME">
+                                                {% for kw, tip in group.items %}
+                                                    <option value="{{ kw }}" title="{{ tip }}"
+                                                            {% if r.step.keyword == kw %}selected{% endif %} data-page-node-id="GULn3QtMhluJe9gF2Vz43u">{{ kw }}</option>
+                                                {% endfor %}
+                                            </optgroup>
+                                        {% endfor %}
+                                        {% if r.step.keyword and r.step.keyword not in all_keywords %}
+                                            <option value="{{ r.step.keyword }}" selected data-page-node-id="CvetQnqmLEPI88y1uyPrgL">{{ r.step.keyword }}（未知）</option>
+                                        {% endif %}
+                                    </select>
+                                </td>
+                                <td data-page-node-id="uew2eGxBM3DblMV9zsYCBS">
+                                    <select name="s_type"{% if 'locate' in r.bad %} class="bad-input" title="该关键字需要定位"{% endif %}>
+                                        <option value="" data-page-node-id="B21AJHFLRPzyPFeO8esBif">--</option>
+                                        {% for v, label in locate_types %}
+                                            <option value="{{ v }}" {% if r.step.locate_type == v %}selected{% endif %} data-page-node-id="YsHDSkU2E5mFd6Z1o4HS34">{{ label }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </td>
+                                <td><input type="text" name="s_expr" class="mono{% if 'locate' in r.bad %} bad-input{% endif %}" value="{{ r.step.locate_expr }}" placeholder="//*[@id='u1']"{% if 'locate' in r.bad %} title="该关键字需要定位表达式"{% endif %}></td>
+                                <td class="col-data" data-page-node-id="aXTHW4vQUz7MoZjPFqhANS">
+                                    {% if r.editable %}
+                                        <input type="text" name="s_data" class="mono{% if 'value' in r.bad %} bad-input{% endif %}" value="{{ r.data_val }}"
+                                               placeholder="{{ r.placeholder }}"{% if 'value' in r.bad %} title="这一格填得不对，见页面顶部的校验提示"{% endif %}>
+                                    {% else %}
+                                        {# 该关键字不需要数据：不给输入框，但保留同名隐藏域以维持行序对齐 #}
+                                        <span class="muted" title="该关键字不需要数据">—</span>
+                                        <input type="hidden" name="s_data" value="">
+                                    {% endif %}
+                                </td>
+                                <td class="col-op" data-page-node-id="2gBndkT1qWhA0y65Jokx0G">
+                                    <button class="btn sm" type="button" onclick="moveRow(this,-1)" title="上移" data-page-node-id="xbXAnCFsMpHBXDAOSYxBmK">↑</button>
+                                    <button class="btn sm" type="button" onclick="moveRow(this,1)" title="下移" data-page-node-id="xgBVq3DZuQvIATnBjCdq87">↓</button>
+                                    <button class="btn sm" type="button" onclick="dupRow(this)" title="复制" data-page-node-id="94HwR4voZqklkuwj0cAdpV">⧉</button>
+                                    <button class="btn sm danger" type="button" onclick="delRow(this)" title="删除" data-page-node-id="2Clh523cTwPGuJ0K3XBlan">×</button>
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                <p class="step-tip" id="kwTip" data-page-node-id="ECkS3RQqyRg55q4PyQ7ehs"></p>
+            </form>
+        </div>
+
+        <!-- 从其他用例复制步骤 -->
+        <div id="copyPanel" class="subpanel" style="display:none" data-page-node-id="83yEqEgoXigViWDSAt7Kh8">
+            <form method="post" action="{% url 'cases:case_copy_from' case.pk %}" data-page-node-id="XRofZMPhGz0HQdUfe01Wk0">
+                {% csrf_token %}
+                <div class="grid3" data-page-node-id="yD2piB1xPWCjDzHO5mpOI8">
+                    <div class="field" style="grid-column:span 2" data-page-node-id="BH5WDJRkxRfQiSGUo9pD3U">
+                        <label data-page-node-id="9Jv9g9lgild6CIiFH3hZuP">来源用例</label>
+                        <select name="src_pk" data-page-node-id="G9KDTHSm47QAdGrOZuVK1E">
+                            <option value="" data-page-node-id="IxtdQpWG3lQ8V3ot4UFgOD">-- 选择用例 --</option>
+                            {% for oc in other_cases %}
+                                <option value="{{ oc.pk }}" data-page-node-id="heDXgGbpRA9BTqHTPnAsEZ">{{ oc.tcid }} · {{ oc.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="field" data-page-node-id="7jYWh4nrym0xVogQGNRLKq">
+                        <label data-page-node-id="dU0p8V3mHfSrUtpbfzL7ao">复制内容</label>
+                        <label class="chk" data-page-node-id="ZXMBtk20KiQjkVh7JICpVu"><input type="checkbox" name="copy_steps" value="1" checked data-page-node-id="gpeFI1SVcHdXSziT1UonTJ"> 步骤（含操作值）</label>
+                    </div>
+                </div>
+                <div class="btn-row" data-page-node-id="Rqg6VT9yEmJOjlPotZSCBG">
+                    <button class="btn sm primary" type="submit" data-page-node-id="JTAQDL38gK3DaITHZ9kT9X">复制进来</button>
+                    <button class="btn sm" type="button" onclick="togglePanel('copyPanel')" data-page-node-id="2wV6M3KxYCPaHJEHEBOmHU">取消</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- ================= 变更历史（保存前自动留档，可一键还原） ================= -->
+    <div class="card" style="margin-top:16px">
+        <div class="card-head">
+            <h2>变更历史（{{ snapshots|length }} 份）</h2>
+            <div class="btn-row">
+                <button class="btn sm" type="button" onclick="togglePanel('snapPanel')">展开 / 收起</button>
+            </div>
+        </div>
+        <div id="snapPanel" style="display:none">
+            <p class="muted">
+                每次「保存 / 复制 / 还原」前都会先把当时的步骤整表存档，每个用例最多留 20 份；
+                还原前也会先给当前版本拍一张，所以还原错了还能再还原回去。
+                「变更操作」列是与上一版的差异：新增/删除了哪一步，或某一步改了哪个字段。
+            </p>
+            {% if snapshots %}
+                <table>
+                    <thead>
+                        <tr>
+                            <th style="width:170px">时间</th>
+                            <th style="width:110px">原因</th>
+                            <th style="width:70px">步数</th>
+                            <th style="width:100px">操作人</th>
+                            <th>变更操作</th>
+                            <th style="width:90px">操作</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for snap in snapshots %}
+                            <tr class="snap-row">
+                                <td class="nowrap">{{ snap.created_at|date:"Y-m-d H:i:s" }}</td>
+                                <td>{{ snap.get_reason_display }}</td>
+                                <td>{{ snap.step_count }}</td>
+                                <td>{{ snap.created_by.username|default:'-' }}</td>
+                                <td>
+                                    {% for ch in snap.change_items %}
+                                        {% if ch.type == 'add' %}
+                                            <div class="chg add" title="新增的一步">＋ 新增步骤{{ ch.no }}
+                                                <code>{{ ch.kw|default:'-' }}</code>
+                                                <span class="muted">{{ ch.desc|truncatechars:14 }}</span></div>
+                                        {% elif ch.type == 'del' %}
+                                            <div class="chg del" title="被删掉的一步">－ 删除步骤{{ ch.no }}
+                                                <code>{{ ch.kw|default:'-' }}</code>
+                                                <span class="muted">{{ ch.desc|truncatechars:14 }}</span></div>
+                                        {% elif ch.type == 'mod' %}
+                                            <div class="chg mod" title="步骤字段被修改">✎ 步骤{{ ch.no }} {{ ch.field }}：
+                                                <s class="muted">{{ ch.old|default:'空'|truncatechars:12 }}</s>
+                                                → <b>{{ ch.new|default:'空'|truncatechars:12 }}</b></div>
+                                        {% else %}
+                                            <div class="chg mod">✎ 步骤{{ ch.no }} 起连续 {{ ch.count }} 步被整体改写</div>
+                                        {% endif %}
+                                    {% empty %}
+                                        <span class="muted">与上一版相比没有变化</span>
+                                    {% endfor %}
+                                    {% if snap.change_more %}
+                                        <div class="muted">…另有 {{ snap.change_more }} 处变更</div>
+                                    {% endif %}
+                                </td>
+                                <td class="nowrap">
+                                    <form method="post"
+                                          action="{% url 'cases:steps_restore' case.pk snap.pk %}"
+                                          onsubmit="return confirm('确定还原到 {{ snap.created_at|date:"Y-m-d H:i:s" }} 这个版本吗？\n当前步骤会先自动存档，可以再还原回来。')">
+                                        {% csrf_token %}
+                                        <button class="btn sm" type="submit">还原</button>
+                                    </form>
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            {% else %}
+                <div class="empty">还没有历史记录 —— 下一次保存步骤时会自动存档。</div>
+            {% endif %}
+        </div>
+    </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// 各关键字在「操作值」列该填什么 —— 与后端 views.DATA_PLACEHOLDERS 保持一致
+var STEP_VALUE_KW = ['open_browser','open_url','start_app','get_win','sleep','sendkeys',
+    'swith_window_handle_by_index','swith_window_handle_by_title','swith_frame','mouse_click','Exeucejs'];
+
+var PH = {
+    'input': '输入值',
+    'selectbytext': '选择值（选项文本）',
+    'selectbyindex': '选择值（序号，从 0 开始）',
+    'selectbyvalue': '选择值（option 的 value）',
+    'codeslide': '滑块坐标 x,y（如 300,0）',
+    'open_browser': 'Chrome / Firefox / Ie',
+    'open_url': '网址 URL',
+    'sleep': '等待秒数',
+    'sendkeys': '按键（如 ENTER）',
+    'start_app': '程序 exe 路径',
+    'swith_window_handle_by_index': '窗口序号',
+    'swith_window_handle_by_title': '窗口标题',
+    'swith_frame': 'frame 的 id 或序号',
+    'mouse_click': '坐标 x,y',
+    'Exeucejs': 'JS 脚本',
+    'assertnumber_between': '范围 最小值-最大值',
+    'assert_number_between': '范围 最小值-最大值'
+};
+
+function togglePanel(id) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    el.style.display = (el.style.display === 'none') ? 'block' : 'none';
+}
+
+function renumber() {
+    document.querySelectorAll('#stepBody tr').forEach(function (tr, i) {
+        tr.querySelector('.col-no').textContent = i + 1;
+    });
+}
+
+function placeholderOf(kw) {
+    kw = (kw || '').toLowerCase();
+    if (kw.indexOf('assert') >= 0) return PH[kw] || '期望值';
+    if (PH[kw]) return PH[kw];
+    return '操作值（可不填）';
+}
+
+// 与后端 cases.stepvalues.step_kind 保持一致
+function kindOf(kw) {
+    kw = (kw || '').toLowerCase();
+    if (kw === 'input') return 'input';
+    if (kw === 'selectbytext' || kw === 'selectbyindex' || kw === 'selectbyvalue') return 'select';
+    if (kw === 'codeslide') return 'codeslide';
+    if (kw.indexOf('assert') >= 0) return 'assert';
+    if (STEP_VALUE_KW.indexOf(kw) >= 0) return 'value';
+    return 'none';  // 不需要数据的关键字：click / maxwindow …
+}
+
+// 「操作值」格：需要数据时给输入框，不需要时只显示一个短横线
+// （短横线旁仍有同名隐藏域，保证 POST 时 s_data 与 s_desc 行序一一对应）
+function dataCellHtml(kw, value) {
+    if (kindOf(kw) === 'none') {
+        return '<span class="muted" title="该关键字不需要数据">—</span>' +
+               '<input type="hidden" name="s_data" value="">';
+    }
+    return '<input type="text" name="s_data" class="mono" value="' + (value || '') +
+           '" placeholder="' + placeholderOf(kw) + '">';
+}
+
+function renderDataCell(td, kw, keepValue) {
+    var old = td.querySelector('input[name=s_data]');
+    var v = (keepValue && old) ? old.value : '';
+    td.innerHTML = dataCellHtml(kw, v);
+    var tr = td.closest('tr');
+    if (tr) tr.setAttribute('data-kind', kindOf(kw));
+}
+
+// 关键字变化后：更新提示文字，并按新关键字重建「操作值」格
+function kwChange(sel) {
+    var tip = sel.options[sel.selectedIndex].getAttribute('title') || '';
+    document.getElementById('kwTip').textContent = tip ? '说明：' + tip : '';
+    var td = sel.closest('tr').querySelector('.col-data');
+    if (td) renderDataCell(td, sel.value, true);
+}
+
+function moveRow(btn, dir) {
+    var tr = btn.closest('tr');
+    var idx = Array.prototype.indexOf.call(tr.parentNode.children, tr);
+    var target = idx + dir;
+    if (target < 0 || target >= tr.parentNode.children.length) return;
+    var ref = tr.parentNode.children[target];
+    if (dir < 0) tr.parentNode.insertBefore(tr, ref);
+    else tr.parentNode.insertBefore(ref, tr);
+    renumber();
+}
+
+function delRow(btn) {
+    var tr = btn.closest('tr');
+    tr.parentNode.removeChild(tr);
+    renumber();
+}
+
+function dupRow(btn) {
+    var tr = btn.closest('tr');
+    var copy = tr.cloneNode(true);
+    tr.parentNode.insertBefore(copy, tr.nextSibling);
+    renumber();
+}
+
+function rowTemplate() {
+    return '<tr data-kind="none">' +
+        '<td class="col-drag"><span class="handle" draggable="true">⠿</span></td>' +
+        '<td class="col-no">1</td>' +
+        '<td class="col-run"><input type="hidden" name="s_run" value="y"><input type="checkbox" checked onchange="this.previousElementSibling.value = this.checked ? \'y\' : \'n\'" style="width:auto"></td>' +
+        '<td><input type="text" name="s_desc" value=""></td>' +
+        '<td><select name="s_kw" onchange="kwChange(this)">' + (window.KW_OPTIONS || '') + '</select></td>' +
+        '<td><select name="s_type">' + (window.TYPE_OPTIONS || '') + '</select></td>' +
+        '<td><input type="text" name="s_expr" class="mono" value=""></td>' +
+        '<td class="col-data">' + dataCellHtml('') + '</td>' +
+        '<td class="col-op"><button class="btn sm" type="button" onclick="moveRow(this,-1)">↑</button>' +
+        '<button class="btn sm" type="button" onclick="moveRow(this,1)">↓</button>' +
+        '<button class="btn sm" type="button" onclick="dupRow(this)">⧉</button>' +
+        '<button class="btn sm danger" type="button" onclick="delRow(this)">×</button></td></tr>';
+}
+
+function addStep() {
+    var tb = document.getElementById('stepBody');
+    var first = tb.querySelector('tr');
+    if (!first) {
+        tb.insertAdjacentHTML('beforeend', rowTemplate());
+        renumber();
+        return;
+    }
+    var tr = first.cloneNode(true);
+    tr.querySelectorAll('input[type=text]').forEach(function (i) { i.value = ''; });
+    var hid = tr.querySelector('input[name=s_run]');
+    var cb = tr.querySelector('input[type=checkbox]');
+    if (hid) hid.value = 'y';
+    if (cb) cb.checked = true;
+    [].forEach.call(tr.querySelectorAll('select'), function (s) { s.selectedIndex = 0; });
+    var td = tr.querySelector('.col-data');
+    if (td) renderDataCell(td, '', false);
+    tb.appendChild(tr);
+    renumber();
+}
+
+// 校验规则由后端注入（cases/views.step_rules_json），避免前端再抄一份、两边走偏
+var RULES = {{ vrules|safe }};
+
+function isNum(s) { return s !== '' && !isNaN(s); }
+
+function clearMarks() {
+    document.querySelectorAll('#stepBody .bad-input').forEach(function (el) {
+        el.classList.remove('bad-input');
+    });
+    document.querySelectorAll('#stepBody tr').forEach(function (tr) {
+        tr.classList.remove('has-error');
+    });
+}
+
+// 给某一行里指定的格描红：kw / locate / value
+function markRow(tr, fields) {
+    tr.classList.add('has-error');
+    fields.forEach(function (f) {
+        if (f === 'kw') { var e = tr.querySelector('select[name=s_kw]'); if (e) e.classList.add('bad-input'); }
+        if (f === 'locate') {
+            var t = tr.querySelector('select[name=s_type]'); if (t) t.classList.add('bad-input');
+            var x = tr.querySelector('input[name=s_expr]'); if (x) x.classList.add('bad-input');
+        }
+        if (f === 'value') {
+            var v = tr.querySelector('.col-data input[name=s_data]');
+            if (v && v.type !== 'hidden') v.classList.add('bad-input');
+        }
+    });
+}
+
+// 保存前跑一遍静态校验，返回 [{no, msg}]
+function validateSteps() {
+    var out = [];
+    document.querySelectorAll('#stepBody tr').forEach(function (tr, i) {
+        var no = i + 1;
+        var kwEl = tr.querySelector('select[name=s_kw]');
+        var kw = (kwEl ? kwEl.value : '') || '';
+        var kl = kw.toLowerCase();
+        var desc = ((tr.querySelector('input[name=s_desc]') || {}).value || '').trim();
+        if (!kw.trim() && !desc) return;          // 整行空白：保存时会被跳过
+        if (!kw.trim()) { out.push([no, '未选择关键字']); markRow(tr, ['kw']); return; }
+
+        var bad = [];
+        // 1. 定位
+        if (RULES.noLocate.indexOf(kl) < 0) {
+            var typeEl = tr.querySelector('select[name=s_type]');
+            var exprEl = tr.querySelector('input[name=s_expr]');
+            var t = (typeEl ? typeEl.value : '') || '';
+            var x = (exprEl ? exprEl.value : '') || '';
+            if (!t.trim() || !x.trim()) { out.push([no, kw + '：缺少定位']); bad.push('locate'); }
+        }
+        // 2. 必须填的「操作值」
+        var vEl = tr.querySelector('.col-data input[name=s_data]');
+        var val = ((vEl && vEl.type !== 'hidden') ? vEl.value : '') || '';
+        val = val.trim();
+        var kind = kindOf(kw);
+        var need = RULES.kindNeedValue.indexOf(kind) >= 0 || RULES.kwNeedValue.indexOf(kl) >= 0;
+        if (kind === 'assert' && RULES.noExpectedAssert.indexOf(kl) >= 0) need = false;
+        if (need && !val) { out.push([no, kw + '：「操作值」为空']); bad.push('value'); }
+
+        // 3. 填了但格式不对
+        if (val) {
+            if (RULES.numeric[kl] && !isNum(val)) {
+                out.push([no, kw + '：应为数字，当前「' + val + '」']); bad.push('value');
+            } else if (kl === 'selectbyindex' && !/^\d+$/.test(val)) {
+                out.push([no, '下拉框序号应为非负整数']); bad.push('value');
+            } else if (RULES.xy.indexOf(kl) >= 0) {
+                var p = val.split(',');
+                if (p.length !== 2 || !isNum(p[0].trim()) || !isNum(p[1].trim())) {
+                    out.push([no, kw + '：应为 x,y，当前「' + val + '」']); bad.push('value');
+                }
+            } else if (kl === 'assert_number_between') {
+                var pm = val.split('-');
+                if (pm.length !== 2 || !isNum(pm[0].trim()) || !isNum(pm[1].trim())) {
+                    out.push([no, '应为「最小值-最大值」，当前「' + val + '」']); bad.push('value');
+                }
+            } else if (kind === 'assert' && val.toLowerCase() !== 'true' && val.toLowerCase() !== 'false'
+                       && ['assert_is_display', 'assert_is_enabled', 'assert_is_exist',
+                           'assert_is_notexist'].indexOf(kl) >= 0) {
+                out.push([no, kw + '：期望值应为 True / False']); bad.push('value');
+            }
+        }
+        if (bad.length) markRow(tr, bad);
+    });
+    return out;
+}
+
+// 保存：先校验，有问题让用户决定是否仍然保存
+// （后端从不拒绝保存 —— 一旦拒绝，steps_save「先删后建」会把用户刚填的全丢掉）
+function submitSteps() {
+    clearMarks();
+    var bad = validateSteps();
+    if (bad.length) {
+        var lines = bad.slice(0, 10).map(function (b) { return '  第 ' + b[0] + ' 行：' + b[1]; });
+        var more = bad.length > 10 ? ('\n  … 还有 ' + (bad.length - 10) + ' 处') : '';
+        if (!confirm('发现 ' + bad.length + ' 处可能让执行失败的问题：\n' + lines.join('\n') + more +
+                     '\n\n仍要保存吗？\n（可以先改，也可以先存着 —— 页面右上「变更历史」随时能还原）')) {
+            var first = document.querySelector('#stepBody tr.has-error');
+            if (first) first.scrollIntoView({block: 'center'});
+            return;
+        }
+    }
+    document.getElementById('stepForm').submit();
+}
+
+// 拖拽只是改顺序，不该反复弹校验框
+function saveOrder() { document.getElementById('stepForm').submit(); }
+
+// 预生成下拉选项，供新增行使用
+(function () {
+    var kw = document.querySelector('select[name=s_kw]');
+    var tp = document.querySelector('select[name=s_type]');
+    window.KW_OPTIONS = kw ? kw.innerHTML : '';
+    window.TYPE_OPTIONS = tp ? tp.innerHTML : '';
+})();
+
+// 步骤拖拽排序：拖放手柄重排 DOM 顺序后，立即保存（steps_save 按 DOM 顺序重建）
+(function () {
+    var body = document.getElementById('stepBody');
+    if (!body) return;
+    var dragSrc = null;
+
+    body.addEventListener('dragstart', function (e) {
+        var h = e.target.closest && e.target.closest('.handle');
+        if (!h) return;
+        dragSrc = h.closest('tr');
+        dragSrc.classList.add('dragging');
+        e.dataTransfer.effectAllowed = 'move';
+        try { e.dataTransfer.setData('text/plain', ''); } catch (_) {}
+    });
+
+    body.addEventListener('dragover', function (e) {
+        if (!dragSrc) return;
+        var tr = e.target.closest('tr');
+        if (tr && tr !== dragSrc) e.preventDefault();
+    });
+
+    body.addEventListener('drop', function (e) {
+        if (!dragSrc) return;
+        e.preventDefault();
+        var tr = e.target.closest('tr');
+        if (tr && tr !== dragSrc) {
+            var rect = tr.getBoundingClientRect();
+            var after = (e.clientY - rect.top) > rect.height / 2;
+            body.insertBefore(dragSrc, after ? tr.nextSibling : tr);
+            renumber();
+            saveOrder();
+        }
+        dragSrc = null;
+    });
+
+    body.addEventListener('dragend', function () {
+        if (dragSrc) dragSrc.classList.remove('dragging');
+        dragSrc = null;
+    });
+})();
+
+// 字段说明：圈+问号，鼠标悬停展示解释语，移开即隐藏（fixed 浮层，不被表格滚动条截断）
+(function () {
+    var pop = document.createElement('div');
+    pop.className = 'help-pop';
+    pop.style.display = 'none';
+    document.body.appendChild(pop);
+
+    function place(el) {
+        pop.textContent = el.getAttribute('data-help') || '';
+        pop.style.display = 'block';
+        var r = el.getBoundingClientRect();
+        var pw = pop.offsetWidth, ph = pop.offsetHeight;
+        var top = r.bottom + 6;
+        var left = r.left + r.width / 2 - pw / 2;
+        if (left < 8) left = 8;
+        if (left + pw > window.innerWidth - 8) left = window.innerWidth - pw - 8;
+        if (top + ph > window.innerHeight - 8) top = r.top - ph - 6;
+        if (top < 8) top = 8;
+        pop.style.top = top + 'px';
+        pop.style.left = left + 'px';
+    }
+    function hide() { pop.style.display = 'none'; }
+
+    document.querySelectorAll('.kw-help').forEach(function (el) {
+        el.addEventListener('mouseenter', function () { place(el); });
+        el.addEventListener('mouseleave', hide);
+    });
+})();
+</script>
+{% endblock %}

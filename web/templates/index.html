@@ -1,0 +1,59 @@
+{% extends 'base.html' %}
+{% block title %}首页 - yikeUIAuto{% endblock %}
+
+{% block content %}
+    <style>
+        tr.row-link { cursor: pointer; }
+        tr.row-link:hover { background: #faf9f5; }
+    </style>
+    <div class="stats">
+        <div class="stat">
+            <div class="num">{{ total }}</div>
+            <div class="label">用例总数</div>
+        </div>
+        <div class="stat">
+            <div class="num">{{ enabled }}</div>
+            <div class="label">已启用</div>
+        </div>
+        <div class="stat">
+            <div class="num">{{ step_total }}</div>
+            <div class="label">步骤总数</div>
+        </div>
+        <div class="stat">
+            <div class="num">{% if last_run %}{{ last_run.duration|floatformat:1 }}s{% else %}-{% endif %}</div>
+            <div class="label">上次执行耗时</div>
+        </div>
+    </div>
+
+    <div class="card" style="margin-top:20px">
+        <h2>最近执行</h2>
+        {% if recent_runs %}
+            <table>
+                <tr>
+                    <th>#</th>
+                    <th>状态</th>
+                    <th>范围</th>
+                    <th>通过/失败/异常</th>
+                    <th>耗时</th>
+                    <th>时间</th>
+                    <th style="width:120px">操作</th>
+                </tr>
+                {% for run in recent_runs %}
+                    <tr class="row-link" onclick="location.href='{% url 'runner:run_detail' run.pk %}'">
+                        <td>{{ run.pk }}</td>
+                        <td>{{ run.get_status_display }}</td>
+                        <td>{{ run.case_filter }}</td>
+                        <td>{{ run.passed }} / {{ run.failed }} / {{ run.error }}</td>
+                        <td>{% if run.duration %}{{ run.duration|floatformat:1 }}s{% else %}-{% endif %}</td>
+                        <td>{{ run.created_at|date:"Y-m-d H:i" }}</td>
+                        <td class="nowrap" onclick="event.stopPropagation()">
+                            <a class="btn sm" href="{% url 'runner:run_detail' run.pk %}">详情</a>
+                        </td>
+                    </tr>
+                {% endfor %}
+            </table>
+        {% else %}
+            <div class="empty">还没有执行记录。</div>
+        {% endif %}
+    </div>
+{% endblock %}

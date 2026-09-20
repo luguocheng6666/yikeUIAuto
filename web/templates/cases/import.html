@@ -1,0 +1,124 @@
+{% extends 'base.html' %}
+{% block title %}从 Excel 导入 - yikeUIAuto{% endblock %}
+
+{% block extra_css %}
+<style>
+.dropzone {
+    border: 2px dashed #c8c6e0; border-radius: 10px; padding: 30px 20px;
+    text-align: center; cursor: pointer; background: #faf9ff; transition: .15s;
+    display: block;
+}
+.dropzone:hover, .dropzone.drag { border-color: #6f66c9; background: #f3f1ff; }
+.dropzone .big { font-size: 15px; color: #26215c; margin-bottom: 4px; }
+.dropzone .sub { font-size: 12.5px; color: #94938e; }
+.dropzone input[type=file] { display: none; }
+.filechip {
+    display: none; align-items: center; gap: 8px; margin-top: 14px;
+    padding: 7px 12px; background: #eef0fb; border-radius: 6px; font-size: 13px;
+    color: #3d3d3a;
+}
+.filechip .x { cursor: pointer; color: #a32d2d; font-weight: 700; padding: 0 4px; }
+.subcard { margin-top: 18px; }
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function confirmImport(form) {
+    var clear = document.getElementById('id_clear') && document.getElementById('id_clear').checked;
+    if (clear) {
+        return confirm('警告：将先清空数据库中所有用例、步骤与数据，再用 Excel 覆盖！\n\n'
+            + '当前库会自动备份到 BackUP/ 目录。确定继续吗？');
+    }
+    return confirm('确定开始导入吗？会按 TCID 覆盖更新已有用例。');
+}
+
+function handleFile(input) {
+    var f = input.files && input.files[0];
+    var chip = document.getElementById('fileChip');
+    var name = document.getElementById('fileName');
+    var btn = document.getElementById('submitBtn');
+    if (f) {
+        name.textContent = f.name + '（' + (f.size / 1024).toFixed(1) + ' KB）';
+        chip.style.display = 'inline-flex';
+        btn.disabled = false;
+    } else {
+        chip.style.display = 'none';
+        btn.disabled = true;
+    }
+}
+
+function clearFile() {
+    var input = document.getElementById('id_excel');
+    input.value = '';
+    handleFile(input);
+}
+
+(function () {
+    var dz = document.getElementById('dropzone');
+    if (!dz) return;
+    ['dragenter', 'dragover'].forEach(function (ev) {
+        dz.addEventListener(ev, function (e) { e.preventDefault(); dz.classList.add('drag'); });
+    });
+    ['dragleave', 'drop'].forEach(function (ev) {
+        dz.addEventListener(ev, function (e) { e.preventDefault(); dz.classList.remove('drag'); });
+    });
+    dz.addEventListener('drop', function (e) {
+        var f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+        if (f) {
+            var inp = document.getElementById('id_excel');
+            try { inp.files = e.dataTransfer.files; } catch (err) {}
+            handleFile(inp);
+        }
+    });
+})();
+</script>
+{% endblock %}
+
+{% block content %}
+<div class="card" style="max-width:760px" data-page-node-id="WQJrAWvCW2aTUJgqqitzEW">
+    <h2 data-page-node-id="FcouWtWpoC2p797BnZGw2q">从 Excel 导入用例</h2>
+    <p class="muted" style="margin-bottom:18px" data-page-node-id="b8Yd9MNXQLkwlv31yHz8if">
+        把整理好的用例表导入系统。选择本地 Excel 文件上传即可，导入前会自动备份当前库。
+    </p>
+
+    <form method="post" enctype="multipart/form-data" onsubmit="return confirmImport(this)" data-page-node-id="NEcXPvII6lgufP2yYKipYY">
+        {% csrf_token %}
+
+        <label class="dropzone" id="dropzone" for="id_excel" data-page-node-id="51fIV3smjzveS0BodkWQEP">
+            <div class="big" data-page-node-id="bB76V4DozIHJGvo5CqMIBr">点击选择，或把 Excel 文件拖到这里</div>
+            <div class="sub" data-page-node-id="ox71p5YjVGdmjQADFM4MK5">支持 .xlsx 格式，单文件建议不超过 20 MB</div>
+            <input type="file" id="id_excel" name="excel" accept=".xlsx" onchange="handleFile(this)" data-page-node-id="7Fxg4zi0SgAySeHE6LCFJ7">
+        </label>
+        <div class="filechip" id="fileChip" data-page-node-id="9aa0zwFJmo14BH7rFuv5gD">
+            <span id="fileName" data-page-node-id="mcwpyYbPxbrHCh0mwUo06r"></span>
+            <span class="x" onclick="clearFile()" title="移除" data-page-node-id="0If7uo8b7ZoPtQirerCedM">✕</span>
+        </div>
+
+        <div class="field" style="margin-top:18px" data-page-node-id="tD0FweT1osvRjOw5RAiQty">
+            <label data-page-node-id="ubv245PAEiPwIUi2DRM7mY">
+                <input type="checkbox" id="id_clear" name="clear" value="1" style="width:auto;margin-right:6px" data-page-node-id="jtAzIlSzmtZTY5rP0mulQG">
+                导入前先清空现有所有用例（不勾选则按 TCID 覆盖更新）
+            </label>
+            <div class="hint" data-page-node-id="vJ27cvj3ZVQzoT1rJfrheO">
+                首次迁移建议勾选，避免残留下半截旧数据。<br data-page-node-id="G25X36kxboU2d3GAhwCyYQ">
+                <strong data-page-node-id="IGWvdZaPZRFBTyyjZICRH5">无论是否勾选，导入前都会自动把当前库备份到 <code data-page-node-id="2DXvP1u4EcFOpw7AZqzZrm">BackUP/</code></strong>，误操作可从备份导回。
+            </div>
+        </div>
+
+        <div class="btn-row" data-page-node-id="gvmwvKBGigaNYxMrB2OeEE">
+            <button class="btn primary" type="submit" id="submitBtn" disabled data-page-node-id="tUcYANiTTejILqW8We4iAZ">开始导入</button>
+            <a class="btn" href="{% url 'cases:excel_export_template' %}" title="下载标准模板，照着填好再导入" data-page-node-id="WNsemUFtbDc6TDGEU9alVt">下载导入模板</a>
+            <a class="btn" href="{% url 'cases:case_list' %}" data-page-node-id="vUE4EJqEVRaWNfXGbkneXC">返回列表</a>
+        </div>
+    </form>
+
+    <hr style="border:none;border-top:1px solid #eee;margin:22px 0" data-page-node-id="QciPQ2RujwOQUAfJKS7fuq">
+    <p class="muted" data-page-node-id="rhT7FHoJW584GLtQEyhlz6">
+        导入读取两张 sheet：<code data-page-node-id="HIjZbQOYdDIKqQS2IPyybg">测试用例</code>、<code data-page-node-id="mSCZbTnyNgz3EQdUb8W5CA">TestSteps</code>。
+        步骤要用的数据统一写在 <code data-page-node-id="CM6x5QKvWXf1r1ePj32nXq">TestSteps</code> 的「操作值」列；执行结果列（循环次数 / 开始时间 / 耗时 / 结果 / 错误信息）在「测试用例」表里。<br data-page-node-id="RqPe9eNUeOozWZvXEQs62Z">
+        如果文件里仍带旧的 <code data-page-node-id="ZKRr2fjdKjZrUvH6UCqLo2">TestDatas</code> sheet，也会被识别：其中的 Input / selector / 期望值会自动迁进步骤，结果列归并到用例上，不会丢数据。<br data-page-node-id="KNfPgldStzZCmTzG8fJKOt">
+        不确定格式？点上方「下载导入模板」拿一份带示例的标准模板，照着填即可。
+    </p>
+</div>
+{% endblock %}

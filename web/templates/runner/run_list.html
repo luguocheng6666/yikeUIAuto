@@ -1,0 +1,115 @@
+{% extends 'base.html' %}
+{% block title %}执行记录 - yikeUIAuto{% endblock %}
+
+{% block content %}
+    <div class="card-head">
+        <h2>执行记录（共 {{ all_count }} 条）</h2>
+        <div class="btn-row">
+            <a class="btn" href="{% url 'cases:case_list' %}">去勾选用例并执行</a>
+        </div>
+    </div>
+
+    <div class="card" style="padding:12px 16px">
+        <form method="get" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <select name="status" style="width:130px">
+                <option value="">全部状态</option>
+                {% for v, label in status_choices %}
+                    <option value="{{ v }}" {% if status == v %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+            </select>
+            <span class="muted">时间</span>
+            <input type="date" name="since" value="{{ since }}" style="width:145px" title="起始日期">
+            <span class="muted">至</span>
+            <input type="date" name="until" value="{{ until }}" style="width:145px" title="截止日期（含当天）">
+            {% if not since and not until %}
+                {% for v, label in range_choices %}
+                    <a class="btn sm {% if range == v %}primary{% endif %}"
+                       href="?range={{ v }}{% if status %}&status={{ status }}{% endif %}{% if q %}&q={{ q }}{% endif %}">{{ label }}</a>
+                {% endfor %}
+            {% endif %}
+            <input type="text" name="q" value="{{ q }}" placeholder="执行范围含关键词" style="width:200px">
+            <button class="btn sm" type="submit">筛选</button>
+            {% if status or q or range or since or until %}
+                <a class="btn sm" href="{% url 'runner:run_list' %}">清除</a>
+            {% endif %}
+            <span class="muted" style="margin-left:6px">
+                第 {{ page_obj.number }} / {{ paginator.num_pages }} 页 · 本页 {{ page_obj|length }} 条
+            </span>
+        </form>
+    </div>
+
+    <div class="card">
+        {% if runs %}
+            <table>
+                <thead>
+                    <tr>
+                        <th style="width:60px">#</th>
+                        <th style="width:120px">状态</th>
+                        <th>执行范围</th>
+                        <th style="width:160px">通过/失败/异常</th>
+                        <th style="width:90px">耗时</th>
+                        <th style="width:170px">开始时间</th>
+                        <th style="width:80px">操作</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for r in runs %}
+                        <tr>
+                            <td>{{ r.pk }}</td>
+                            <td>
+                                {% if r.status == 'running' %}<span class="tag run">执行中</span>
+                                {% elif r.status == 'pending' %}<span class="tag">等待中</span>
+                                {% elif r.status == 'passed' %}<span class="tag on">全部通过</span>
+                                {% elif r.status == 'failed' %}<span class="tag off">存在失败</span>
+                                {% elif r.status == 'error' %}<span class="tag off">异常</span>
+                                {% elif r.status == 'cancelled' %}<span class="tag">已停止</span>
+                                {% else %}{{ r.get_status_display }}{% endif %}
+                            </td>
+                            <td>
+                                {% if r.case_filter == '全部启用用例' %}
+                                    {{ r.case_filter }}
+                                {% elif r.case_filter|slice:":5" == "TAGS:" %}
+                                    <span class="tag on">标签</span> {{ r.case_filter|slice:"5:" }}
+                                {% elif r.case_filter|slice:":6" == "CASES:" %}
+                                    <span class="tag">勾选 {{ r.case_filter|slice:"6:" }}</span>
+                                {% elif r.case_filter|slice:":5" == "CASE:" %}
+                                    <span class="tag">单条</span> <span class="mono">{{ r.case_filter|slice:"5:" }}</span>
+                                {% else %}
+                                    {{ r.case_filter }}
+                                {% endif %}
+                            </td>
+                            <td>{{ r.passed }} / {{ r.failed }} / {{ r.error }}</td>
+                            <td>{% if r.duration %}{{ r.duration }}s{% else %}-{% endif %}</td>
+                            <td>{{ r.started_at|date:"Y-m-d H:i:s"|default:"-" }}</td>
+                            <td class="nowrap">
+                                <a class="btn sm" href="{% url 'runner:run_detail' r.pk %}">查看</a>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+
+            {% if page_obj.has_other_pages %}
+                <div class="btn-row" style="margin-top:12px;justify-content:center">
+                    {% if page_obj.has_previous %}
+                        <a class="btn sm" href="?page=1{% if filter_qs %}&{{ filter_qs }}{% endif %}">首页</a>
+                        <a class="btn sm" href="?page={{ page_obj.previous_page_number }}{% if filter_qs %}&{{ filter_qs }}{% endif %}">上一页</a>
+                    {% endif %}
+                    <span class="muted" style="padding:0 8px">{{ page_obj.number }} / {{ paginator.num_pages }}</span>
+                    {% if page_obj.has_next %}
+                        <a class="btn sm" href="?page={{ page_obj.next_page_number }}{% if filter_qs %}&{{ filter_qs }}{% endif %}">下一页</a>
+                        <a class="btn sm" href="?page={{ paginator.num_pages }}{% if filter_qs %}&{{ filter_qs }}{% endif %}">末页</a>
+                    {% endif %}
+                </div>
+            {% endif %}
+        {% else %}
+            <div class="empty">
+                {% if status or q or range or since or until %}
+                    没有符合条件的执行记录。<a href="{% url 'runner:run_list' %}">查看全部</a>
+                {% else %}
+                    还没有执行记录，到用例列表勾选用例后点「运行启用的用例」即可。
+                {% endif %}
+            </div>
+        {% endif %}
+    </div>
+{% endblock %}

@@ -1,0 +1,117 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<page>
+
+    <activity name="login">
+
+        <element id="username">
+            <name>username</name>
+            <pathType>ID</pathType>
+            <pathValue>memberID</pathValue>
+        </element>
+        <element id="password">
+            <name>password</name>
+            <pathType>ID</pathType>
+            <pathValue>pwd</pathValue>
+        </element>
+        <element id="login_bt">
+            <name>login_bt</name>
+            <pathType>link_text</pathType>
+            <pathValue>登　录</pathValue>
+        </element>
+        <element id="Verification_bt">
+            <name>Verification_bt</name>
+            <pathType>xpath</pathType>
+            <pathValue>//*[@id="slider1"]/div/div[2]</pathValue>
+        </element>
+        <element id="login_error">
+            <name>login_error</name>
+            <pathType>ID</pathType>
+            <pathValue>e</pathValue>
+        </element>
+        <element id="login_ok">
+            <name>login_ok</name>
+            <pathType>class_name</pathType>
+            <pathValue>font-org-1</pathValue>
+        </element>
+    </activity>
+
+    <activity name="home">
+        <element id="GD_button">
+            <name>GD_button</name>
+            <pathType>XPATH</pathType>
+            <pathValue>/html/body/div[3]/div/div/a</pathValue>
+        </element>
+    </activity>
+    <activity name="GDpage">
+        <element id="scj_button">
+            <name>scj_button</name>
+            <pathType>ID</pathType>
+            <pathValue>fac</pathValue>
+        </element>
+        <element id="login_button">
+            <name>login_button</name>
+            <pathType>link_text</pathType>
+            <pathValue>[登录]</pathValue>
+        </element>
+        <element id="alertclosebutton">
+            <name>alertclosebutton</name>
+            <pathType>class_name</pathType>
+            <pathValue>guess-active-close</pathValue>
+        </element>
+
+        <element id="register_button">
+            <name>register_button</name>
+            <pathType>link_text</pathType>
+            <pathValue>[免费注册]</pathValue>
+        </element>
+    </activity>
+    <activity name="register">
+        <element id="register_button">
+            <name>register_button</name>
+            <pathType>xpath</pathType>
+            <pathValue>//div[@class="bluebtn"]/a</pathValue>
+        </element>
+        <element id="username">
+            <name>username</name>
+            <pathType>ID</pathType>
+            <pathValue>memberID</pathValue>
+        </element>
+        <element id="password">
+            <name>password</name>
+            <pathType>ID</pathType>
+            <pathValue>password</pathValue>
+        </element>
+        <element id="phone">
+            <name>phone</name>
+            <pathType>ID</pathType>
+            <pathValue>number_dete</pathValue>
+        </element>
+        <element id="register_error">
+            <name>register_error</name>
+            <pathType>class_name</pathType>
+            <pathValue>memberID-error-tip</pathValue>
+        </element>
+        <element id="regetbutton">
+            <name>regetbutton</name>
+            <pathType>ID</pathType>
+            <pathValue>regetbutton</pathValue>
+        </element>
+        <element id="verifyCode">
+            <name>verifyCode</name>
+            <pathType>ID</pathType>
+            <pathValue>verifyCode</pathValue>
+        </element>
+        <element id="code-error">
+            <name>code-error</name>
+            <pathType>ID</pathType>
+            <pathValue>code-error</pathValue>
+        </element>
+
+        <element id="register_ok">
+            <name>register_ok</name>
+            <pathType>xpath</pathType>
+            <pathValue>//h2</pathValue>
+        </element>
+
+    </activity>
+</page>

@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>登录 - yikeUIAuto</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: "Microsoft YaHei", "PingFang SC", -apple-system, sans-serif;
+            background: #f5f6f8; color: #2c2c2a; font-size: 14px;
+            display: flex; align-items: center; justify-content: center; min-height: 100vh;
+        }
+        .box {
+            background: #fff; border: 1px solid #e8e8e6; border-radius: 12px;
+            padding: 36px 40px; width: 380px;
+        }
+        .box h1 { font-size: 18px; font-weight: 500; color: #26215c; margin-bottom: 6px; }
+        .box .sub { font-size: 13px; color: #6b6a66; margin-bottom: 24px; }
+        label { display: block; font-size: 13px; color: #5f5e5a; margin-bottom: 6px; }
+        input[type=text], input[type=password] {
+            width: 100%; padding: 10px 12px; border: 1px solid #d3d1c7;
+            border-radius: 6px; font-size: 14px; margin-bottom: 16px; outline: none;
+        }
+        input:focus { border-color: #7f77dd; }
+        button {
+            width: 100%; padding: 11px; background: #26215c; color: #fff;
+            border: none; border-radius: 6px; font-size: 14px; cursor: pointer;
+        }
+        button:hover { background: #3c3489; }
+        .err { color: #a32d2d; font-size: 13px; margin-bottom: 12px; }
+    </style>
+</head>
+<body>
+    <div class="box">
+        <h1>yikeUIAuto</h1>
+        <div class="sub">关键字驱动自动化用例管理平台</div>
+
+        {% if form.errors %}
+            <div class="err">用户名或密码不正确，请重试。</div>
+        {% endif %}
+
+        <form method="post">
+            {% csrf_token %}
+            <label>用户名</label>
+            <input type="text" name="username" value="admin" autofocus>
+            <label>密码</label>
+            <input type="password" name="password" value="123456">
+            <button type="submit">登 录</button>
+        </form>
+    </div>
+</body>
+</html>

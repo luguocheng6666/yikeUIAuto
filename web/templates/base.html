@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block title %}yikeUIAuto{% endblock %}</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: "Microsoft YaHei", "PingFang SC", -apple-system, sans-serif;
+            background: #f5f6f8; color: #2c2c2a; font-size: 14px; line-height: 1.6;
+        }
+        /* sticky：页面往下滚时顶栏留在原位，层级压住下面的卡片与弹窗内容 */
+        .navbar {
+            background: #26215c; color: #fff; padding: 0 24px;
+            display: flex; align-items: center; height: 56px;
+            position: sticky; top: 0; z-index: 100;
+            box-shadow: 0 1px 0 rgba(0, 0, 0, .06);
+        }
+        .navbar .brand { font-size: 16px; font-weight: 500; margin-right: 32px; }
+        .navbar a { color: #cecbf6; text-decoration: none; margin-right: 20px; font-size: 14px; }
+        .navbar a:hover, .navbar a.active { color: #fff; }
+        .navbar .spacer { flex: 1; }
+        .navbar .user { font-size: 13px; color: #cecbf6; margin-right: 12px; }
+        .container { max-width: 1280px; margin: 24px auto; padding: 0 24px; }
+        .card {
+            background: #fff; border-radius: 10px; padding: 20px;
+            border: 1px solid #e8e8e6; margin-bottom: 20px;
+        }
+        .card h2 { font-size: 15px; font-weight: 500; margin-bottom: 14px; color: #26215c; }
+        .card-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+        .card-head h2 { margin-bottom: 0; }
+        .stats { display: flex; gap: 16px; flex-wrap: wrap; }
+        .stat {
+            flex: 1; min-width: 160px; background: #fff; border: 1px solid #e8e8e6;
+            border-radius: 10px; padding: 18px 20px;
+        }
+        .stat .num { font-size: 26px; font-weight: 500; color: #26215c; }
+        .stat .label { font-size: 13px; color: #6b6a66; margin-top: 2px; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid #eee; vertical-align: middle; }
+        th { font-weight: 500; color: #5f5e5a; font-size: 13px; }
+        tbody tr:hover { background: #fafaf8; }
+        .tag {
+            display: inline-block; padding: 2px 8px; border-radius: 4px;
+            font-size: 12px; background: #f1efe8; color: #5f5e5a;
+        }
+        .tag.on { background: #e1f5ee; color: #0f6e56; }
+        .tag.off { background: #fcebeb; color: #a32d2d; }
+        .tag.run { background: #e6f0fb; color: #185fa8; }
+        .empty { color: #888780; padding: 24px 0; text-align: center; }
+
+        /* 变更历史里的差异行 */
+        .chg { font-size: 12.5px; line-height: 1.75; }
+        .chg.add { color: #0f6e56; }
+        .chg.del { color: #a32d2d; }
+        .chg.mod { color: #5f5e5a; }
+        .chg code { font-family: Consolas, Monaco, monospace; font-size: 12px; }
+
+        /* 按钮 */
+        .btn {
+            display: inline-block; padding: 6px 14px; border-radius: 6px; border: 1px solid #d8d7d2;
+            background: #fff; color: #3d3d3a; cursor: pointer; font-size: 13px;
+            text-decoration: none; font-family: inherit;
+        }
+        .btn:hover { background: #f3f2ee; }
+        .btn.primary { background: #26215c; border-color: #26215c; color: #fff; }
+        .btn.primary:hover { background: #1d1948; }
+        .btn.danger { background: #fff; border-color: #e5b8b8; color: #a32d2d; }
+        .btn.danger:hover { background: #fdf3f3; }
+        .btn.sm { padding: 3px 9px; font-size: 12px; }
+        .btn-row { display: flex; gap: 8px; flex-wrap: wrap; }
+        /* 行内表单：让 POST 按钮和链接按钮排在同一行、外观一致 */
+        form.inline { display: inline; margin: 0; }
+        .btn[disabled] { opacity: .55; cursor: not-allowed; }
+
+        /* 表单 */
+        .field { margin-bottom: 14px; }
+        .field label { display: block; font-size: 13px; color: #5f5e5a; margin-bottom: 5px; }
+        .field .hint { font-size: 12px; color: #94938e; margin-top: 4px; }
+        input[type=text], input[type=password], input[type=number], select, textarea {
+            width: 100%; padding: 7px 10px; border: 1px solid #d8d7d2; border-radius: 6px;
+            font-size: 13px; font-family: inherit; background: #fff; color: #2c2c2a;
+        }
+        input:focus, select:focus, textarea:focus { outline: none; border-color: #6f66c9; }
+        textarea { resize: vertical; }
+
+        /* Tab */
+        .tabs { display: flex; gap: 4px; border-bottom: 1px solid #e8e8e6; margin-bottom: 18px; }
+        .tabs a {
+            padding: 8px 16px; text-decoration: none; color: #6b6a66; font-size: 14px;
+            border-bottom: 2px solid transparent; margin-bottom: -1px;
+        }
+        .tabs a.active { color: #26215c; border-bottom-color: #26215c; font-weight: 500; }
+
+        /* 消息 */
+        .messages { margin-bottom: 16px; }
+        .msg { padding: 10px 14px; border-radius: 6px; margin-bottom: 8px; font-size: 13px; }
+        .msg.success { background: #e1f5ee; color: #0f6e56; }
+        .msg.error { background: #fcebeb; color: #a32d2d; }
+
+        /* 步骤表 */
+        .steptable td { padding: 6px 6px; }
+        .steptable input, .steptable select { font-size: 12.5px; padding: 5px 8px; }
+        .steptable .col-no { width: 46px; text-align: center; color: #94938e; }
+        .steptable .col-op { width: 92px; white-space: nowrap; text-align: center; }
+        .steptable .col-run { width: 62px; text-align: center; }
+        .steptable .col-kw { width: 190px; }
+        .steptable .col-type { width: 150px; }
+        .step-tip { font-size: 12px; color: #94938e; padding: 6px 0 0; }
+
+        .mono { font-family: Consolas, Monaco, monospace; font-size: 12px; }
+        .nowrap { white-space: nowrap; }
+        .muted { color: #94938e; font-size: 12.5px; }
+        .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 18px; }
+        .grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0 18px; }
+        @media (max-width: 860px) { .grid2, .grid3 { grid-template-columns: 1fr; } }
+    </style>
+    {% block extra_css %}{% endblock %}
+</head>
+<body>
+    <div class="navbar">
+        <span class="brand">yikeUIAuto</span>
+        {% if user.is_authenticated %}
+            <a href="{% url 'index' %}">首页</a>
+            <a href="{% url 'cases:case_list' %}">用例管理</a>
+            <a href="{% url 'runner:run_list' %}">执行记录</a>
+            <a href="{% url 'runner:schedule_list' %}">定时执行</a>
+            <a href="{% url 'runner:notify_settings' %}">通知设置</a>
+            <a href="/admin/">后台</a>
+            <span class="spacer"></span>
+            <span class="user">{{ user.username }}</span>
+            <a href="{% url 'logout' %}">退出</a>
+        {% endif %}
+    </div>
+    <div class="container">
+        {% if messages %}
+            <div class="messages">
+                {% for m in messages %}<div class="msg {{ m.tags }}">{{ m }}</div>{% endfor %}
+            </div>
+        {% endif %}
+        {% block content %}{% endblock %}
+    </div>
+    {% block extra_js %}{% endblock %}
+</body>
+</html>

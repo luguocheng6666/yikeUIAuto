@@ -1,0 +1,70 @@
+{% extends 'base.html' %}
+{% block title %}执行详情 #{{ task.pk }} - yikeUIAuto{% endblock %}
+
+{% block extra_js %}
+<script>
+function refresh() {
+    fetch("{% url 'runner:run_status_api' task.pk %}")
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
+            document.getElementById('status').textContent = d.status_display;
+            document.getElementById('counts').textContent =
+                d.passed + ' 通过 / ' + d.failed + ' 失败 / ' + d.error + ' 异常';
+            document.getElementById('current').textContent = d.current_step || '—';
+            document.getElementById('cancelRow').style.display = d.can_cancel ? 'inline' : 'none';
+            var tail = document.getElementById('tail');
+            tail.textContent = d.log_tail || '';
+            tail.scrollTop = tail.scrollHeight;
+                if (d.finished) {
+                document.getElementById('progress').style.display = 'none';
+                if (d.has_report) {
+                    document.getElementById('report').src =
+                        "{% url 'runner:run_report' task.pk %}";
+                    document.getElementById('report').style.display = 'block';
+                } else {
+                    document.getElementById('noreport').style.display = 'block';
+                }
+                clearInterval(timer);
+            }
+        })
+        .catch(function () {});
+}
+var timer = setInterval(refresh, 2000);
+refresh();
+</script>
+{% endblock %}
+
+{% block content %}
+        <div class="card-head">
+        <h2>执行 #{{ task.pk }}
+            <span class="tag run" id="status">{{ task.get_status_display }}</span>
+        </h2>
+        <div class="btn-row">
+            <form id="cancelRow" class="inline" method="post" style="display:{% if task.is_active %}inline{% else %}none{% endif %}"
+                  action="{% url 'runner:run_cancel' task.pk %}"
+                  onsubmit="return confirm('确定停止本次执行吗？当前用例会跑完这一步后中断。')">
+                {% csrf_token %}
+                <button class="btn danger sm" type="submit">■ 停止执行</button>
+            </form>
+            <a class="btn" href="{% url 'runner:run_list' %}">返回列表</a>
+        </div>
+    </div>
+
+    <div class="card" id="progress">
+        <div class="grid2">
+            <div><div class="muted">执行范围</div><div>{{ task.case_filter }}</div></div>
+            <div><div class="muted">结果</div><div id="counts">{{ task.passed }} 通过 / {{ task.failed }} 失败 / {{ task.error }} 异常</div></div>
+            <div><div class="muted">当前步骤</div><div id="current" class="mono">{{ task.current_step|default:"—" }}</div></div>
+            <div><div class="muted">耗时</div><div>{% if task.duration %}{{ task.duration }}s{% else %}-{% endif %}</div></div>
+        </div>
+        <h2 style="margin-top:18px">实时日志</h2>
+        <pre id="tail" class="mono" style="white-space:pre-wrap;background:#1e1e2e;color:#d6d6e0;padding:12px;border-radius:8px;max-height:320px;overflow:auto">{{ task.log_tail }}</pre>
+    </div>
+
+    <div id="noreport" class="card empty" style="display:none">
+        本次执行未生成报告（可能没有可执行的用例，或执行过程出现异常）。
+    </div>
+
+    <iframe id="report" title="测试报告"
+            style="display:none;width:100%;height:1400px;border:1px solid #e8e8e6;border-radius:10px"></iframe>
+{% endblock %}

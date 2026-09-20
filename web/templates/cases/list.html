@@ -1,0 +1,224 @@
+{% extends 'base.html' %}
+{% block title %}用例管理 - yikeUIAuto{% endblock %}
+
+{% block content %}
+    {# 头部：标题 + 操作按钮；下面单独一行放筛选 —— 与执行记录页保持同一种排布 #}
+    <div class="card-head">
+        <h2>用例列表（{{ total }} 条，其中 {{ enabled }} 条启用{% if total_bad %} · <span style="color:#c0392b">{{ total_bad }} 条有填写问题</span>{% endif %}）</h2>
+        <div class="btn-row">
+            {% if tag %}
+                <form class="inline" method="post" action="{% url 'runner:run_start_tag' %}">
+                    {% csrf_token %}
+                    <input type="hidden" name="tag" value="{{ tag }}">
+                    <button class="btn primary" type="submit">▶ 运行「{{ tag }}」</button>
+                </form>
+            {% endif %}
+            <a class="btn" href="{% url 'cases:excel_import' %}">从 Excel 导入</a>
+            <a class="btn" href="#" onclick="return exportChecked()" title="只导出列表里勾选的用例">导出 Excel</a>
+            <a class="btn primary" href="{% url 'cases:case_new' %}">+ 新建用例</a>
+        </div>
+    </div>
+
+    <div class="card" style="padding:12px 16px">
+        <form method="get" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <input type="text" name="q" value="{{ q }}" placeholder="搜索 TCID / 名称" style="width:190px">
+            {% if all_tags %}
+                <select name="tag" style="width:130px">
+                    <option value="">全部标签</option>
+                    {% for t in all_tags %}
+                        <option value="{{ t }}" {% if tag == t %}selected{% endif %}>{{ t }}</option>
+                    {% endfor %}
+                </select>
+            {% endif %}
+            <select name="health" style="width:120px" title="静态校验：缺关键字 / 定位 / 操作值会被判为不健康">
+                <option value="">全部健康度</option>
+                <option value="ok" {% if health == 'ok' %}selected{% endif %}>健康</option>
+                <option value="bad" {% if health == 'bad' %}selected{% endif %}>不健康</option>
+            </select>
+            <button class="btn sm" type="submit">筛选</button>
+            {% if q or tag or health %}
+                <a class="btn sm" href="{% url 'cases:case_list' %}">清除</a>
+            {% endif %}
+            <span class="muted" style="margin-left:6px">
+                共 {{ cases|length }} 条{% if q or tag or health %}（已筛选，全库 {{ total }} 条）{% endif %}
+            </span>
+        </form>
+    </div>
+
+    <form id="enableForm" method="post" action="{% url 'cases:case_enable_save' %}">
+        {% csrf_token %}
+        <input type="hidden" name="next" value="{{ request.get_full_path }}">
+        {% for c in cases %}
+            <input type="hidden" name="row_pk" value="{{ c.pk }}">
+        {% endfor %}
+        <div style="margin:10px 0" class="btn-row">
+            <button class="btn sm primary" type="submit"
+                    formaction="{% url 'cases:case_run_enabled' %}">▶ 运行启用的用例</button>
+            <span class="muted" id="saveTip" style="margin-left:8px">
+                勾选代表「启用」——改动即自动保存，运行只跑勾选上的这些。
+                {% if q or tag or health %}（当前处于筛选状态，只会改动列表里出现的用例）{% endif %}
+            </span>
+        </div>
+    </form>
+
+    <div class="card">
+        {% if cases %}
+            <table>
+                <thead>
+                    <tr>
+                        <th style="width:118px" title="勾选 = 启用">
+                            <label style="font-weight:500" title="全部勾上 / 全部取消">
+                                <input type="checkbox" id="selAll" onchange="selectAll(this.checked)"
+                                       style="width:auto;vertical-align:middle"> 启用
+                            </label>
+                            <button class="btn sm" type="button" onclick="invertSel()"
+                                    style="padding:1px 6px;font-size:11px;vertical-align:middle"
+                                    title="已选中的取消，未选中的勾上（同样立即保存）">反选</button>
+                        </th>
+                        <th style="width:170px">TCID</th>
+                        <th>用例名称</th>
+                        <th>标签</th>
+                        <th style="width:96px" title="静态校验：缺失关键字 / 定位 / 操作值等问题数">健康度</th>
+                        <th style="width:120px">上次结果</th>
+                        <th style="width:200px">操作</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for c in cases %}
+                        <tr>
+                            <td>
+                                <input type="checkbox" name="enabled" value="{{ c.pk }}" form="enableForm"
+                                       {% if c.need_run %}checked{% endif %} style="width:auto">
+                            </td>
+                            <td class="mono">{{ c.tcid }}</td>
+                            <td><a href="{% url 'cases:case_detail' c.pk %}">{{ c.name }}</a></td>
+                            <td>
+                                {% for t in c.tag_list %}
+                                    <a class="tag" href="?tag={{ t }}">{{ t }}</a>
+                                {% empty %}
+                                    <span class="muted">-</span>
+                                {% endfor %}
+                            </td>
+                            <td>
+                                {% if c.err_count %}
+                                    <a class="tag off" href="{% url 'cases:case_detail' c.pk %}"
+                                       title="{% if c.warn_count %}另有 {{ c.warn_count }} 处提示{% else %}点击查看并修正{% endif %}">{{ c.err_count }} 处问题</a>
+                                {% elif c.warn_count %}
+                                    <span class="tag" title="没有阻断性问题">{{ c.warn_count }} 处提示</span>
+                                {% else %}
+                                    <span class="tag on">健康</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if c.last_result == 'Passed' %}<span class="tag on">Passed</span>
+                                {% elif c.last_result == 'Failed' %}<span class="tag off">Failed</span>
+                                {% elif c.last_result == 'Error' %}<span class="tag off">Error</span>
+                                {% else %}<span class="muted">-</span>{% endif %}
+                            </td>
+                            <td class="nowrap">
+                                <a class="btn sm" href="{% url 'cases:case_detail' c.pk %}">编辑</a>
+                                <a class="btn sm" href="{% url 'cases:case_edit' c.pk %}">属性</a>
+                                <form class="inline" method="post" action="{% url 'runner:run_start_case' c.pk %}">
+                                    {% csrf_token %}
+                                    <button class="btn sm" type="submit" title="不论是否启用，都单独跑这一条">执行</button>
+                                </form>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        {% else %}
+            <div class="empty">
+                {% if q or tag %}
+                    没有符合筛选条件的用例。<a href="{% url 'cases:case_list' %}">返回全部</a>
+                {% else %}
+                    还没有用例。
+                    <a href="{% url 'cases:excel_import' %}">从现有 testdata.xlsx 导入</a>
+                    或 <a href="{% url 'cases:case_new' %}">新建</a>。
+                {% endif %}
+            </div>
+        {% endif %}
+    </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+    var form = document.getElementById('enableForm');
+    var tip = document.getElementById('saveTip');
+    var hint = tip ? tip.textContent.trim() : '';
+    if (!form) return;
+
+    function boxes() {
+        return Array.prototype.slice.call(
+            document.querySelectorAll('input[name=enabled][form=enableForm]'));
+    }
+
+    // 勾选即保存：整个列表的勾选状态一次性提交，成功后把提示位临时改成保存结果
+    function saveEnable() {
+        var fd = new FormData(form);
+        fd.append('ajax', '1');
+        tip.textContent = '保存中…';
+        fetch(form.action, {
+            method: 'POST',
+            body: fd,
+            credentials: 'same-origin',
+            headers: {'X-Requested-With': 'XMLHttpRequest'}
+        }).then(function (r) { return r.json(); })
+          .then(function (d) {
+              if (d && d.ok) {
+                  tip.textContent = '已保存：' + d.enabled + ' 条启用 / ' + d.disabled + ' 条停用';
+              } else {
+                  tip.textContent = '保存失败' + (d && d.error ? '：' + d.error : '，请刷新页面重试');
+              }
+          })
+          .catch(function () { tip.textContent = '保存失败：网络异常，请刷新页面重试'; });
+    }
+
+    // 表头那个框要能反映「全选 / 全不选 / 只选了一部分」三种状态（半选态用 indeterminate）
+    function syncHead() {
+        var all = boxes();
+        var head = document.getElementById('selAll');
+        if (!head) return;
+        var on = all.filter(function (b) { return b.checked; }).length;
+        head.checked = all.length > 0 && on === all.length;
+        head.indeterminate = on > 0 && on < all.length;
+    }
+
+    window.selectAll = function (want) {
+        boxes().forEach(function (b) { b.checked = want; });
+        syncHead();
+        saveEnable();
+    };
+
+    window.invertSel = function () {
+        boxes().forEach(function (b) { b.checked = !b.checked; });
+        syncHead();
+        saveEnable();
+    };
+
+    window.checkedIds = function () {
+        return boxes().filter(function (b) { return b.checked; })
+                      .map(function (b) { return b.value; });
+    };
+
+    // 导出 Excel：只导出列表上勾选的那些（勾选即启用，通常就是要导出的那批）
+    window.exportChecked = function () {
+        var ids = checkedIds();
+        if (!ids.length) {
+            alert('请先勾选要导出的用例 —— 导出只包含勾选上的这些。');
+            return false;
+        }
+        location.href = '{% url "cases:excel_export" %}?ids=' + ids.join(',');
+        return false;
+    };
+
+    boxes().forEach(function (b) {
+        b.addEventListener('change', function () { syncHead(); saveEnable(); });
+    });
+    syncHead();
+    // 没有「保存」按钮了，提示语保留在旁边；第一次交互前显示原始说明
+    window.__saveHint = hint;
+})();
+</script>
+{% endblock %}

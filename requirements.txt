@@ -1,0 +1,29 @@
+# yikeUIAuto 依赖清单
+# 实测环境：Windows 11 + Python 3.10 / 3.13（原项目主要跑在 Python 3.7）
+# Linux 部署：带 `; sys_platform == "win32"` 标记的包会被自动跳过，
+# 桌面端（pywinauto / comtypes）在 Linux 上不可用，Web 用例不受影响。
+
+# ---- Web 自动化核心 ----
+selenium==3.141.0
+# 注意：原 urllib3==1.24.1 在 Python 3.12+ 上 import 会失败
+# （ModuleNotFoundError: No module named 'urllib3.packages.six.moves'），
+# 且会让 selenium 3.141.0 无法导入，故上调到 1.26.x。
+urllib3==1.26.20
+
+# ---- Excel 用例读写 ----
+openpyxl==2.5.12
+xlrd==1.2.0
+et-xmlfile==1.0.1
+jdcal==1.4
+
+# ---- Windows 桌面端自动化（pywinauto）----
+# 原 requirements.txt 遗漏了 pywinauto，但 framework/basepage.py、
+# framework/browser_engine.py、test.py 均直接 import 它。
+# framework/browser_engine.py 中已改为条件导入，Linux 上缺失不会拖垮 Web 用例。
+pywinauto==0.6.9; sys_platform == "win32"
+comtypes; sys_platform == "win32"
+six==1.12.0
+
+# ---- 报告 SFTP 上传（framework/upload.py，默认未启用）----
+# 原 paramiko==2.4.2 / cryptography==2.4.2 已无法在新版 Python 上安装。
+paramiko==3.5.1

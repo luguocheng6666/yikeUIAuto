@@ -1,0 +1,38 @@
+# 项目内置 Python（Windows 开发用，Linux 部署时用系统 Python + requirements.txt）
+.python3/
+.venv/
+venv/
+
+# 运行产物
+Screenshot/
+reports/
+BackUP/
+Logs/
+debug.log
+result*.html
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# 编辑器 / 系统
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Excel 打开时生成的锁文件
+~$*.xlsx
+
+# 工作区记忆 / 敏感与临时产物（切勿入库）
+.workbuddy/
+.vscode/
+import_page.png
+_login.html
+_shot_import.py
+Screenshot/
+
+# 临时调试脚本 / 副本（不入库）
+web/_*.py
+test copy.py

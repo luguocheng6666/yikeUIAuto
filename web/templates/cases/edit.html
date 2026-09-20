@@ -1,0 +1,112 @@
+{% extends 'base.html' %}
+{% block title %}{% if mode == 'new' %}新建用例{% else %}编辑用例属性{% endif %} - yikeUIAuto{% endblock %}
+
+{% block content %}
+    <div class="card" style="max-width:720px" data-page-node-id="pLxN0YEhtxJWhCBeONn875">
+        <h2 data-page-node-id="vQAo6nATzHU7WiPyiqTmCS">{% if mode == 'new' %}新建用例{% else %}编辑用例属性{% endif %}</h2>
+        <form method="post" id="caseForm" data-page-node-id="pnGVuCCV8xEhTRyNkTfLAU">
+            {% csrf_token %}
+            <div class="grid2" data-page-node-id="SpNBxUbi4fPCOSXI2i8hEW">
+                <div class="field" data-page-node-id="BfDxRuRgRC4nAOMBRdEca3">
+                    <label data-page-node-id="QjauB5WjY5MefyFBRpvTaA">TCID（唯一标识，如 crm_login）</label>
+                    <input type="text" name="tcid" value="{{ case.tcid|default:'' }}" required data-page-node-id="x86BjLemsi47Pt22mEzXGY">
+                </div>
+                <div class="field" data-page-node-id="HIUrLlE8JpfvuApDkxWU7t">
+                    <label data-page-node-id="0yqbznTKJfpPyZHNC9jikN">用例名称</label>
+                    <input type="text" name="name" value="{{ case.name|default:'' }}" required data-page-node-id="pCEycITBMSnX35Zf3d7T81">
+                </div>
+            </div>
+            <div class="field" data-page-node-id="hgZciVL9thk6F4TbvRGW40">
+                <label data-page-node-id="QMeXcNgP6GPD7ioiF6MVLk">用例描述</label>
+                <textarea name="description" rows="3">{{ case.description|default:'' }}</textarea>
+            </div>
+            <div class="field" data-page-node-id="SdDmeU6N9RJe4cgaD4wA8u">
+                <label data-page-node-id="GhlE3seqBzwMlJXDgW9He3">标签（逗号分隔，用于「按标签挑一批用例执行」，最多 10 个）</label>
+                <input type="text" name="tags" value="{{ case.tags|default:'' }}" placeholder="如：冒烟,回归,权限" data-page-node-id="dWYQ0QueaaUGlWnBS8F4lX">
+                {% if all_tags %}
+                    <div style="margin-top:6px;display:flex;gap:8px;flex-wrap:wrap" data-page-node-id="1FMPCSr6B2wwqeDb4mjF1X">
+                        {% for t in all_tags %}
+                            <label class="chk" style="margin-right:0" data-page-node-id="zUH406zWKZmLJZFHFPDbVp">
+                                <input type="checkbox" name="tag_pick" value="{{ t }}"
+                                       {% if t in case.tag_list %}checked{% endif %} style="width:auto" data-page-node-id="DzxCZNOQQ9BIJinsLhbdR5">{{ t }}
+                            </label>
+                        {% endfor %}
+                    </div>
+                {% endif %}
+            </div>
+            <div class="grid2" data-page-node-id="nnnR6l55Lky6Lj00puOMo2">
+                <div class="field" data-page-node-id="C71F3frRDVXfxjdbqWLWLN">
+                    <label data-page-node-id="RZJAStKhNuEg328lAUnhgC">循环次数（对应 Excel「测试用例」表的「循环次数」列）</label>
+                    <input type="number" name="cycle" min="1" value="{{ case.cycle|default:1 }}" data-page-node-id="uJZLwykIanDG2bbac1sREZ">
+                </div>
+                <div class="field" data-page-node-id="YGBft8ajH0H9LOBLMesCoS">
+                    <label data-page-node-id="YZwN6e0AScv0Ng8wvHdzLH">&nbsp;</label>
+                    <label style="font-weight:400" data-page-node-id="shlgDsULbB3mHuw7Y6oPOz">
+                        <input type="checkbox" name="need_run" value="y"
+                               {% if case.need_run %}checked{% endif %} style="width:auto;margin-right:6px" data-page-node-id="gwqqDGn95l0h8uxLnSJ6bA">
+                        启用该用例（加入批量执行范围）
+                    </label>
+                </div>
+            </div>
+            <div class="btn-row" data-page-node-id="H35IyR7BuGmEy0cprgxPlW">
+                <button class="btn primary" type="button" onclick="saveCase(this)" data-page-node-id="Uvu1LVhX75IPs7FGiXXlCM">保存</button>
+                <span id="saveTip" class="muted" style="display:none;color:#2e7d32;margin:0 4px;align-self:center" data-page-node-id="veiVejQAaU0kqruqGENLA6"></span>
+                <a class="btn" href="{% url 'cases:case_list' %}" data-page-node-id="mDkH8hbfbZlIkZI5Bm5IAn">返回列表</a>
+                {% if mode == 'edit' %}
+                    <a class="btn" href="{% url 'cases:case_detail' case.pk %}" data-page-node-id="31DOgFQL0MTAJMXUihxESt">编辑详情</a>
+                {% endif %}
+            </div>
+        </form>
+
+        {% if mode == 'edit' %}
+            <hr style="border:none;border-top:1px solid #eee;margin:20px 0" data-page-node-id="rFFGCHovXr4wuIeh9lpQny">
+            <form method="post" action="{% url 'cases:case_delete' case.pk %}"
+                  onsubmit="return confirm('确定删除用例 {{ case.tcid }} 吗？步骤与数据会一并删除，不可恢复。')" data-page-node-id="jVM02SG6O88eFGNG7MEvot">
+                {% csrf_token %}
+                <button class="btn danger" type="submit" data-page-node-id="ywSL6ea8BSUEQM9ECdYyFi">删除该用例</button>
+            </form>
+        {% endif %}
+    </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// 保存：纯 AJAX，成功后停留在当前「属性编辑页」（不跳转）。
+// 新建模式下创建成功后会一次性跳到该用例的属性编辑页，便于继续编辑详情。
+function saveCase(btn) {
+    var form = document.getElementById('caseForm');
+    if (!form) return;
+    var fd = new FormData(form);
+    fd.set('ajax', '1');
+    var old = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = '保存中…';
+    fetch(form.action, {
+        method: 'POST',
+        body: fd,
+        headers: {'X-Requested-With': 'XMLHttpRequest'}
+    })
+    .then(function (r) { return r.json(); })
+    .then(function (d) {
+        btn.disabled = false;
+        btn.textContent = old;
+        if (d.ok) {
+            var tip = document.getElementById('saveTip');
+            if (tip) {
+                tip.style.display = 'inline';
+                tip.textContent = '已保存 ✓';
+                setTimeout(function () { tip.style.display = 'none'; }, 2000);
+            }
+            if (d.edit_url) { window.location.href = d.edit_url; }
+        } else {
+            alert(d.msg || '保存失败，请检查表单');
+        }
+    })
+    .catch(function (e) {
+        btn.disabled = false;
+        btn.textContent = old;
+        alert('保存失败：' + e);
+    });
+}
+</script>
+{% endblock %}

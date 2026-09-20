@@ -1,0 +1,358 @@
+{% extends 'base.html' %}
+{% block title %}定时执行 - yikeUIAuto{% endblock %}
+
+{% block extra_css %}
+<style>
+    .modal-mask {
+        position: fixed; left: 0; top: 0; right: 0; bottom: 0;
+        background: rgba(24, 24, 34, .45); z-index: 200;
+        display: none; overflow: auto; padding: 48px 16px;
+    }
+    .modal-mask.open { display: block; }
+    .modal {
+        background: #fff; border-radius: 10px; border: 1px solid #e8e8e6;
+        max-width: 760px; margin: 0 auto; padding: 20px 22px;
+    }
+    .modal-head {
+        display: flex; align-items: center; justify-content: space-between;
+        margin-bottom: 14px;
+    }
+    /* 「指定用例」的多选区：外观跟输入框一致，内部是可滚动的勾选列表 */
+    .case-picker {
+        border: 1px solid #dcdcd8; border-radius: 6px; background: #fff;
+        max-height: 190px; overflow: auto; padding: 6px 10px;
+    }
+    .case-picker label {
+        display: block; font-size: 13px; padding: 3px 0; margin: 0;
+        color: #3a3a38; cursor: pointer;
+    }
+    .case-picker input { width: auto; margin: 0 6px 0 0; vertical-align: middle; }
+    .modal-head h2 { font-size: 15px; font-weight: 500; color: #26215c; }
+    .modal-close {
+        border: 0; background: none; font-size: 20px; line-height: 1;
+        color: #94938e; cursor: pointer;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+    <div class="card-head">
+        <h2>定时执行计划（{{ plans|length }} 条）</h2>
+        <div class="btn-row">
+            <button class="btn primary" type="button" onclick="openPlanModal()">+ 新建定时计划</button>
+        </div>
+    </div>
+
+    {% if not planner_running %}
+        <div class="card" style="padding:10px 16px;border-color:#e6b3b3;background:#fff5f5">
+            <div style="color:#a83232;font-weight:500">
+                本进程当前没有负责调度 —— 页面上的计划不会自动触发。
+            </div>
+            <div class="muted" style="margin-top:4px">
+                {% if lock.pid %}
+                    锁文件 {{ lock.path }} 记的持有者是进程 {{ lock.pid }}
+                    （{% if lock.alive %}仍在运行{% else %}已不存在 —— 属于残留锁{% endif %}），
+                    心跳 {% if lock.age is None %}读不到{% else %}{{ lock.age|floatformat:0 }} 秒前{% endif %}。
+                {% else %}
+                    锁文件 {{ lock.path }} 不存在或内容不可读。
+                {% endif %}
+                调度线程每 30 秒会重试一次抢锁，若上面显示为残留锁，下一轮就会自动接管，
+                不用重启服务。
+            </div>
+        </div>
+    {% endif %}
+
+    <div class="card">
+        {% if plans %}
+            <table>
+                <thead>
+                    <tr>
+                        <th>计划名称</th>
+                        <th style="width:190px">频率</th>
+                        <th>执行范围</th>
+                        <th style="width:150px">下次执行</th>
+                        <th style="width:150px">上次触发</th>
+                        <th style="width:190px">操作</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for p in plans %}
+                        <tr>
+                            <td>
+                                {% if p.enabled %}
+                                    <span class="tag on">启用</span>
+                                {% else %}
+                                    <span class="tag">停用</span>
+                                {% endif %}
+                                {{ p.name }}
+                                {% if p.last_status %}<div class="muted">{{ p.last_status }}</div>{% endif %}
+                            </td>
+                            <td>{{ p.freq_text }}</td>
+                            <td>{{ p.scope_text }}</td>
+                            <td>
+                                {% if p.enabled and p.next_run %}
+                                    {{ p.next_run|date:"Y-m-d H:i" }}
+                                {% else %}
+                                    <span class="muted">-</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if p.last_run_at %}
+                                    {{ p.last_run_at|date:"Y-m-d H:i" }}
+                                    {% if p.last_task %}
+                                        <a class="btn sm" href="{% url 'runner:run_detail' p.last_task.pk %}">#{{ p.last_task.pk }}</a>
+                                    {% endif %}
+                                {% else %}
+                                    <span class="muted">-</span>
+                                {% endif %}
+                            </td>
+                            <td class="nowrap">
+                                <form class="inline" method="post" action="{% url 'runner:schedule_run_now' p.pk %}">
+                                    {% csrf_token %}
+                                    <button class="btn sm" type="submit" title="不等到点，立刻跑一遍">立即执行</button>
+                                </form>
+                                <form class="inline" method="post" action="{% url 'runner:schedule_toggle' p.pk %}">
+                                    {% csrf_token %}
+                                    <button class="btn sm" type="submit">{% if p.enabled %}停用{% else %}启用{% endif %}</button>
+                                </form>
+                                <a class="btn sm" href="?edit={{ p.pk }}" title="打开编辑弹窗">编辑</a>
+                                <form class="inline" method="post" action="{% url 'runner:schedule_delete' p.pk %}"
+                                      onsubmit="return confirm('确定删除计划「{{ p.name }}」？')">
+                                    {% csrf_token %}
+                                    <button class="btn sm danger" type="submit">删除</button>
+                                </form>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        {% else %}
+            <div class="empty">还没有定时计划 —— 点右上角「+ 新建定时计划」，比如「每天 08:30 跑冒烟用例」。</div>
+        {% endif %}
+    </div>
+
+    {# 新建 / 编辑共用同一个弹窗：新建时表单是空的，点「编辑」时由 ?edit=<pk> 带出内容并自动打开 #}
+    <div class="modal-mask" id="planMask">
+        <div class="modal" id="planForm">
+            <div class="modal-head">
+                <h2>{% if editing %}编辑计划：{{ editing.name }}{% else %}新建定时计划{% endif %}</h2>
+                <button class="modal-close" type="button" onclick="closePlanModal()" title="关闭">&times;</button>
+            </div>
+            <form method="post"
+                  action="{% if editing %}{% url 'runner:schedule_edit_save' editing.pk %}{% else %}{% url 'runner:schedule_save' %}{% endif %}">
+                {% csrf_token %}
+                <div class="grid2">
+                    <div class="field">
+                        <label>计划名称</label>
+                        <input type="text" name="name" required
+                               value="{{ editing.name }}" placeholder="如：每天冒烟">
+                    </div>
+                    <div class="field">
+                        <label>频率</label>
+                        <select name="freq" id="freqSel" onchange="refreshFreq()">
+                            {% for v, label in freq_choices %}
+                                <option value="{{ v }}"
+                                        {% if editing.freq == v or not editing and v == 'daily' %}selected{% endif %}>{{ label }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+
+                <div class="grid3" id="timeBox">
+                    {# 每 N 小时：间隔小时数 + 在第几分钟触发（分钟两种频率都用，所以单独一个盒子） #}
+                    <div class="field" id="hourlyBox" style="display:none">
+                        <label>间隔小时数</label>
+                        <input type="number" name="interval_hours" min="1" max="23"
+                               value="{{ editing.interval_hours|default:2 }}">
+                    </div>
+                    {# 每天 / 每周：几点的「小时」—— 注意它跟上面的间隔小时数是互斥的两套控件 #}
+                    <div class="field" id="hourBox" style="display:none">
+                        <label>小时（0-23）</label>
+                        <input type="number" name="hour" min="0" max="23"
+                               value="{{ editing.hour|default:8 }}">
+                    </div>
+                    <div class="field" id="minuteBox">
+                        <label>分钟（0-59）</label>
+                        <input type="number" name="minute" min="0" max="59"
+                               value="{{ editing.minute|default:0 }}">
+                    </div>
+                </div>
+
+                <div class="field" id="weekdayBox" style="display:none">
+                    <label>星期</label>
+                    <div class="btn-row">
+                        {% for v, label in weekday_choices %}
+                            <label class="muted" style="margin-right:10px">
+                                <input type="checkbox" name="weekdays" value="{{ v }}"
+                                       {% if editing and v in editing.weekday_list %}checked{% endif %}
+                                       style="width:auto"> {{ label }}
+                            </label>
+                        {% endfor %}
+                    </div>
+                </div>
+
+                <div class="grid2">
+                    <div class="field">
+                        <label>执行范围</label>
+                        <select name="scope_type" onchange="refreshScope()">
+                            {% for v, label in scope_choices %}
+                                <option value="{{ v }}"
+                                        {% if editing.scope_type == v %}selected{% endif %}>{{ label }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="field" id="scopeValueBox" style="display:none">
+                        <label>范围参数</label>
+
+                        {# 按标签：单选下拉，值就是标签本身 #}
+                        <select name="scope_value" id="scopeTagSel" style="display:none">
+                            <option value="">-- 请选择标签 --</option>
+                            {% for t in all_tags %}
+                                <option value="{{ t }}"
+                                        {% if editing.scope_type == 'tag' and editing.scope_value == t %}selected{% endif %}>{{ t }}</option>
+                            {% endfor %}
+                        </select>
+                        {% if not all_tags %}
+                            <div class="hint" id="noTagHint" style="display:none">
+                                库里还没有任何标签 —— 先去用例列表给用例打标签。
+                            </div>
+                        {% endif %}
+
+                        {# 指定用例：多选，选项「TCID·用例名称」，顺序与用例列表一致 #}
+                        <div id="scopeCaseBox" style="display:none">
+                            <div class="case-picker">
+                                {% for tcid, cname in all_cases %}
+                                    <label>
+                                        <input type="checkbox" name="scope_cases" value="{{ tcid }}"
+                                               {% if tcid in picked_cases %}checked{% endif %}>
+                                        {{ tcid }}·{{ cname }}
+                                    </label>
+                                {% endfor %}
+                            </div>
+                            <div class="hint">
+                                已选 <b id="casePicked">{{ picked_cases|length }}</b> 条 ·
+                                <a href="javascript:;" onclick="pickCases(true)">全选</a> /
+                                <a href="javascript:;" onclick="pickCases(false)">清空</a>
+                                （按住 Ctrl 可逐个增减，或者直接点上面的全选/清空）
+                            </div>
+                        </div>
+
+                        <div class="hint" id="scopeHint"></div>
+                    </div>
+                </div>
+
+                <div class="field">
+                    <label><input type="checkbox" name="enabled" value="1"
+                                  {% if editing.enabled or not editing %}checked{% endif %}
+                                  style="width:auto"> 启用这条计划</label>
+                    <div class="hint">
+                        调度线程每 30 秒检查一次，实际触发时间不会比配置点晚超过 30 秒；
+                        服务停机期间的触发点会被跳过，不会开机补跑一堆。
+                    </div>
+                </div>
+
+                <div class="btn-row">
+                    <button class="btn primary" type="submit">保存计划</button>
+                    <button class="btn" type="button" onclick="closePlanModal()">取消</button>
+                </div>
+            </form>
+        </div>
+    </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function show(sel, on) {
+    var el = document.querySelector(sel);
+    if (el) el.style.display = on ? '' : 'none';
+}
+function refreshFreq() {
+    var f = document.getElementById('freqSel').value;
+    // 按 id 逐个控制：早先 hour 盒子同时挂着 freq-daily / freq-weekly 两个 class，
+    // 选「每天」时会被后面那句 weekly 的隐藏逻辑又给关掉，导致小时控件不显示。
+    show('#hourlyBox', f === 'hourly');
+    show('#hourBox', f === 'daily' || f === 'weekly');
+    show('#minuteBox', f === 'hourly' || f === 'daily' || f === 'weekly');
+    show('#weekdayBox', f === 'weekly');
+}
+function refreshScope() {
+    var v = document.querySelector('[name=scope_type]').value;
+    // 全部启用用例 -> 整个参数区隐藏；按标签 -> 单选下拉；指定用例 -> 多选勾选列表
+    show('#scopeValueBox', v === 'tag' || v === 'cases');
+    show('#scopeTagSel', v === 'tag');
+    show('#noTagHint', v === 'tag' && document.getElementById('scopeTagSel').options.length <= 1);
+    show('#scopeCaseBox', v === 'cases');
+    // 隐藏的控件一并置 disabled：否则不相关的旧值也会跟着表单提交上去
+    document.getElementById('scopeTagSel').disabled = (v !== 'tag');
+    document.querySelectorAll('#scopeCaseBox input[name=scope_cases]')
+        .forEach(function (b) { b.disabled = (v !== 'cases'); });
+    document.getElementById('scopeHint').textContent =
+        v === 'tag' ? '跑该标签下所有启用的用例 —— 标签成员有变动会自动跟着变'
+                    : (v === 'cases' ? '只跑勾选的这些用例（按 TCID 记录，与是否启用无关）' : '');
+}
+function pickCases(on) {
+    document.querySelectorAll('#scopeCaseBox input[name=scope_cases]').forEach(function (b) {
+        b.checked = on;
+    });
+    countCases();
+}
+function countCases() {
+    var n = document.querySelectorAll('#scopeCaseBox input[name=scope_cases]:checked').length;
+    var el = document.getElementById('casePicked');
+    if (el) el.textContent = n;
+}
+document.addEventListener('change', function (e) {
+    if (e.target && e.target.name === 'scope_cases') countCases();
+});
+// 提交前拦一把：范围选了却没填参数，到点会跑空
+document.addEventListener('submit', function (e) {
+    var form = e.target;
+    if (!form.querySelector('[name=scope_type]')) return;
+    var v = form.querySelector('[name=scope_type]').value;
+    if (v === 'tag' && !form.querySelector('[name=scope_value]').value) {
+        alert('请先选择一个标签');
+        e.preventDefault();
+    } else if (v === 'cases'
+               && !form.querySelectorAll('#scopeCaseBox input[name=scope_cases]:checked').length) {
+        alert('请至少勾选一条用例');
+        e.preventDefault();
+    }
+}, true);
+function resetPlanForm() {
+    var f = document.querySelector('#planForm form');
+    if (!f) return;
+    // 清空文本 / 数字输入，下拉还原默认，取消所有勾选（新建默认启用）
+    f.querySelectorAll('input[name=name]').forEach(function (i) { i.value = ''; });
+    f.querySelectorAll('input[name=interval_hours]').forEach(function (i) { i.value = 2; });
+    f.querySelectorAll('input[name=hour]').forEach(function (i) { i.value = 8; });
+    f.querySelectorAll('input[name=minute]').forEach(function (i) { i.value = 0; });
+    document.getElementById('freqSel').value = 'daily';
+    var st = document.querySelector('[name=scope_type]'); if (st) st.value = 'all';
+    document.getElementById('scopeTagSel').value = '';
+    f.querySelectorAll('input[type=checkbox]').forEach(function (c) { c.checked = false; });
+    var en = f.querySelector('input[name=enabled]'); if (en) en.checked = true;
+    countCases();
+    refreshFreq();
+    refreshScope();
+}
+function openPlanModal() {
+    // 新建时确保是空白表单：避免「点了编辑 → 关掉 → 再点新建」把上次编辑的字段带过来
+    if (location.search.indexOf('edit=') < 0) resetPlanForm();
+    document.getElementById('planMask').classList.add('open');
+}
+function closePlanModal() {
+    document.getElementById('planMask').classList.remove('open');
+    // 编辑态下关掉弹窗后，URL 里的 ?edit= 还留着，刷新会又弹出一次 —— 顺手清掉
+    if (location.search.indexOf('edit=') >= 0 || location.search.indexOf('new=') >= 0) {
+        history.replaceState(null, '', location.pathname);
+    }
+}
+document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') closePlanModal();
+});
+refreshFreq();
+refreshScope();
+countCases();
+{% if editing or request.GET.new %}openPlanModal();{% endif %}
+</script>
+{% endblock %}
