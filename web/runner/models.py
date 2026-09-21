@@ -31,6 +31,9 @@ class TaskRun(models.Model):
 
     current_step = models.CharField('当前步骤', max_length=300, blank=True, default='')
     log_tail = models.TextField('日志尾部', blank=True, default='')
+    # 异常摘要：失败/异常时写入一行行「大概说明」（异常类型 + 消息 + 出错的用例），
+    # 在执行列表/详情页直接展示；完整堆栈另落项目日志文件 Logs/run_errors.log。
+    error_summary = models.TextField('异常摘要', blank=True, default='')
     cancel_requested = models.BooleanField('已请求停止', default=False)
 
     started_at = models.DateTimeField('开始时间', null=True, blank=True)

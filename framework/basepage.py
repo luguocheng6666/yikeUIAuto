@@ -13,9 +13,20 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.select import Select
 from selenium import webdriver
-from pywinauto import mouse
-from pywinauto.keyboard import send_keys
-from pywinauto import Desktop
+# pywinauto 仅 Windows 可用（Linux 装不了 pywin32/comtypes），顶层 import 会让整个框架
+# 在 Linux 上启动即崩。改为条件导入：非 Windows 平台置为 None，桌面关键字运行时再报错，
+# Web 关键字（back/refresh/open_url 等）不依赖它们，不受影响。
+import sys as _sys
+IS_WINDOWS = _sys.platform.startswith("win")
+if IS_WINDOWS:
+    try:
+        from pywinauto import mouse
+        from pywinauto.keyboard import send_keys
+        from pywinauto import Desktop
+    except ImportError:
+        mouse = send_keys = Desktop = None
+else:
+    mouse = send_keys = Desktop = None
 from io import BytesIO
 import base64
 import setting

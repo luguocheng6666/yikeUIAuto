@@ -179,6 +179,7 @@ def run_status_api(request, pk):
         'failed': task.failed,
         'error': task.error,
         'current_step': task.current_step,
+        'error_summary': task.error_summary,
         'log_tail': task.log_tail,
         'duration': task.duration,
         'finished': task.is_finished,

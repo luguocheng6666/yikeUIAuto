@@ -14,7 +14,18 @@ from framework.excelutil import excel_readWrite
 from framework import datasource
 import os
 from selenium import webdriver
-from pywinauto import Application
+# pywinauto 仅 Windows 可用，放到模块顶层 import 会让整个框架在 Linux 上启动即崩
+# （Linux 装不了 pywin32/comtypes）。改为条件导入：非 Windows 平台置为 None，
+# 桌面端关键字调用时再报明确的「当前平台不支持」错误，Web 用例不受影响。
+import sys as _sys
+IS_WINDOWS = _sys.platform.startswith("win")
+if IS_WINDOWS:
+    try:
+        from pywinauto import Application
+    except ImportError:      # Windows 上没装 pywinauto 时也不该拖垮 Web 用例
+        Application = None
+else:
+    Application = None
 import unittest
 import time
 from config.readconfig import read
@@ -38,6 +49,14 @@ cases = datasource.open_data_source()
 # 故执行时先按 TCID 反查好名称，供 HTMLTestRunner 报告把「测试用例」列渲染成
 # 「TCID · 用例名称」。data_name 已是脏数据，不再作为取值来源。
 _CASE_NAME_MAP = {}
+
+# 动态生成的 test 方法名（test_<CaseId>_<TCID>_<data_name>）-> (TCID, 用例名称) 映射，
+# 供 Web 平台把内部方法名翻译成「TCID · 用例名称」形式展示（而非难看的 test_xxx）。
+_GEN_META = {}
+
+# 执行过程中「当前步骤」的描述（步骤描述+关键字），供 Web 平台异常摘要使用：
+# executeCase 每一步开始前更新它，用例失败时异常摘要即可带上「具体步骤」。
+CURRENT_STEP_DESC = ''
 
 
 def _build_case_name_map():
@@ -190,6 +209,10 @@ class Keyword(unittest.TestCase):
                         mylog.info("收到停止指令，中断用例 %s 的后续步骤" % testcase[TCID])
                         break
                     keyword = step[BstepKeyword].lower()
+                    # 记录当前步骤，供 Web 平台异常摘要带上「具体步骤」
+                    global CURRENT_STEP_DESC
+                    CURRENT_STEP_DESC = '%s（%s）' % (
+                        step[BstepDescribe] or '', step[BstepKeyword] or '')
                     stepKeywordsList.append(keyword)
                     stepMethod = step[BstepMethod]
                     stepExpression = step[BstepExpression]
@@ -657,6 +680,22 @@ def funcIsExist(text):
     return text1
 
 
+def case_label(method_name):
+    """把动态生成的 test 方法名（test_<CaseId>_<TCID>_<data_name>）翻译成
+    「TCID · 用例名称」形式（如 open_baidu · 打开百度），供 Web 平台展示。
+
+    翻译不到（方法名不在登记表里）就原样返回，不破坏既有逻辑。
+    """
+    meta = _GEN_META.get(method_name)
+    if meta:
+        tcid = meta.get('tcid') or ''
+        name = meta.get('name') or ''
+        if tcid and name:
+            return '%s · %s' % (tcid, name)
+        return tcid or name or method_name
+    return method_name
+
+
 def __generateTestCases():
     _build_case_name_map()
     keyword = Keyword()
@@ -667,6 +706,14 @@ def __generateTestCases():
         text = funcIsExist(title)
         print(text)
         setattr(Keyword, text, keyword.getTestFunc(**case))
+        # 登记「方法名 -> (TCID, 用例名称)」，供 Web 平台把 test_xxx 翻译成「TCID · 名称」
+        _GEN_META[text] = {
+            'tcid': case[TCID],
+            'name': (_CASE_NAME_MAP.get(case[TCID])
+                     or case.get(AcaseName)
+                     or case.get(data_name)
+                     or case[TCID]),
+        }
 
 
 if __name__ == "__main__":

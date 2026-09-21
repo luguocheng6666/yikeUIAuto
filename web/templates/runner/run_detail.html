@@ -11,6 +11,10 @@ function refresh() {
             document.getElementById('counts').textContent =
                 d.passed + ' 通过 / ' + d.failed + ' 失败 / ' + d.error + ' 异常';
             document.getElementById('current').textContent = d.current_step || '—';
+            if (d.error_summary) {
+                document.getElementById('errBox').style.display = 'block';
+                document.getElementById('errsum').textContent = d.error_summary;
+            }
             document.getElementById('cancelRow').style.display = d.can_cancel ? 'inline' : 'none';
             var tail = document.getElementById('tail');
             tail.textContent = d.log_tail || '';
@@ -35,36 +39,41 @@ refresh();
 {% endblock %}
 
 {% block content %}
-        <div class="card-head">
-        <h2>执行 #{{ task.pk }}
-            <span class="tag run" id="status">{{ task.get_status_display }}</span>
+        <div class="card-head" data-page-node-id="dXz3Eutmz1olvjX3DUjjSk">
+        <h2 data-page-node-id="zG9B9JzxquyfZDKIVZCOS6">执行 #{{ task.pk }}
+            <span class="tag run" id="status" data-page-node-id="nDZd0zHfD1ziyFjC1vs8Eg">{{ task.get_status_display }}</span>
         </h2>
-        <div class="btn-row">
+        <div class="btn-row" data-page-node-id="LsUi7mLEABcb2S9ret1ktW">
             <form id="cancelRow" class="inline" method="post" style="display:{% if task.is_active %}inline{% else %}none{% endif %}"
                   action="{% url 'runner:run_cancel' task.pk %}"
-                  onsubmit="return confirm('确定停止本次执行吗？当前用例会跑完这一步后中断。')">
+                  onsubmit="return confirm('确定停止本次执行吗？当前用例会跑完这一步后中断。')" data-page-node-id="CDkSrQHLBTD2D1KtNfLiVC">
                 {% csrf_token %}
-                <button class="btn danger sm" type="submit">■ 停止执行</button>
+                <button class="btn danger sm" type="submit" data-page-node-id="jp790RCdCLePFNkuMHq2Pp">■ 停止执行</button>
             </form>
-            <a class="btn" href="{% url 'runner:run_list' %}">返回列表</a>
+            <a class="btn" href="{% url 'runner:run_list' %}" data-page-node-id="71UNFZfJYscAVRnGksU7QK">返回列表</a>
         </div>
     </div>
 
-    <div class="card" id="progress">
-        <div class="grid2">
-            <div><div class="muted">执行范围</div><div>{{ task.case_filter }}</div></div>
-            <div><div class="muted">结果</div><div id="counts">{{ task.passed }} 通过 / {{ task.failed }} 失败 / {{ task.error }} 异常</div></div>
-            <div><div class="muted">当前步骤</div><div id="current" class="mono">{{ task.current_step|default:"—" }}</div></div>
-            <div><div class="muted">耗时</div><div>{% if task.duration %}{{ task.duration }}s{% else %}-{% endif %}</div></div>
-        </div>
-        <h2 style="margin-top:18px">实时日志</h2>
-        <pre id="tail" class="mono" style="white-space:pre-wrap;background:#1e1e2e;color:#d6d6e0;padding:12px;border-radius:8px;max-height:320px;overflow:auto">{{ task.log_tail }}</pre>
+    <div class="card" id="errBox" style="display:none;border-left:4px solid #e5484d;background:#fff5f5" data-page-node-id="OdpUur8lvZbfehCbNioESG">
+        <div class="muted" data-page-node-id="u5sMRLiJWEoqGUftW6WemS">异常说明</div>
+        <pre id="errsum" class="mono" style="white-space:pre-wrap;margin:6px 0 0;color:#b42318" data-page-node-id="RvETcZqyq35sqPxMrUfZSH"></pre>
     </div>
 
-    <div id="noreport" class="card empty" style="display:none">
+    <div class="card" id="progress" data-page-node-id="Den9BXVR1axCXvrOP2rKs8">
+        <div class="grid2" data-page-node-id="JQemtoK94dZ8TtxSxlzgti">
+            <div data-page-node-id="X4GD8iVQ2Sx97yZAfCVAqq"><div class="muted" data-page-node-id="Feh9oFS63lomEi86eUKVfy">执行范围</div><div data-page-node-id="DYccb0QfEPEov15HKuME16">{{ task.case_filter }}</div></div>
+            <div data-page-node-id="tydWD1D0eOZglEN1PkeqTM"><div class="muted" data-page-node-id="hGJF9lWjMo4nMEPQoAUkGz">结果</div><div id="counts" data-page-node-id="npj3awp46Emv22ptMtgQIW">{{ task.passed }} 通过 / {{ task.failed }} 失败 / {{ task.error }} 异常</div></div>
+            <div data-page-node-id="QBVKdZVlJIt8PkDECSIB5U"><div class="muted" data-page-node-id="JC4ZCPDyYFByXIkxrpXaHg">当前步骤</div><div id="current" class="mono" data-page-node-id="NtfkOCa6fpOU4orlgledaZ">{{ task.current_step|default:"—" }}</div></div>
+            <div data-page-node-id="CdQBIFSldCAancBKF0DZGT"><div class="muted" data-page-node-id="6dTvJ0Wb4fj7W2A7Qokyvh">耗时</div><div data-page-node-id="6CpSwHrXFyC8lSyLyGid7B">{% if task.duration %}{{ task.duration }}s{% else %}-{% endif %}</div></div>
+        </div>
+        <h2 style="margin-top:18px" data-page-node-id="BXX4Iw1m9InKVESMiS5mp3">实时日志</h2>
+        <pre id="tail" class="mono" style="white-space:pre-wrap;background:#1e1e2e;color:#d6d6e0;padding:12px;border-radius:8px;max-height:320px;overflow:auto" data-page-node-id="c4fOPw3AAub6RtUKwSU77e">{{ task.log_tail }}</pre>
+    </div>
+
+    <div id="noreport" class="card empty" style="display:none" data-page-node-id="3mKMrM5f5YQQc7aYWLw6nU">
         本次执行未生成报告（可能没有可执行的用例，或执行过程出现异常）。
     </div>
 
     <iframe id="report" title="测试报告"
-            style="display:none;width:100%;height:1400px;border:1px solid #e8e8e6;border-radius:10px"></iframe>
+            style="display:none;width:100%;height:1400px;border:1px solid #e8e8e6;border-radius:10px" data-page-node-id="FFfgP4zMwRGPrgcyk2NKwx"></iframe>
 {% endblock %}

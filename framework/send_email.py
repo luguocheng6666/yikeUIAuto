@@ -29,15 +29,30 @@ def smtp_settings():
     }
 
 
+def _case_label_of(test):
+    """把用例方法翻译成「TCID · 用例名称」形式；翻译不到（如非本框架动态用例）时
+    退化为老逻辑：取方法名里 data_name 那段尾巴。"""
+    name = getattr(test, '_testMethodName', '') or ''
+    if name:
+        try:
+            from framework.keywordsFrameword import case_label
+            translated = case_label(name)
+            if translated and translated != name:
+                return translated
+        except Exception:
+            pass
+        # 老逻辑兜底：test_<CaseId>_<TCID>_<data_name> 取最后一段
+        return name.split('_', 3)[-1]
+    return name
+
+
 def send_email(report_path, result):
     success_count = str(result.success_count)
     failure_count = str(result.failure_count)
     error_count = str(result.error_count)
 
-    errors = list(set([x[0]._testMethodName.split("_", 3)[-1] for x in result.errors]))
-    failures = list(
-        set([x[0]._testMethodName.split("_", 3)[-1] for x in result.failures])
-    )
+    errors = list(set([_case_label_of(x[0]) for x in result.errors]))
+    failures = list(set([_case_label_of(x[0]) for x in result.failures]))
 
     # 创建一个带附件的邮件消息对象
     message = MIMEMultipart()

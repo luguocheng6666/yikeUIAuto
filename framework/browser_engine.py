@@ -70,7 +70,7 @@ class BrowserEngine(object):
                 chrome_options.add_argument('--disable-gpu')  # 禁用GPU硬件加速。如果软件渲染器没有就位，则GPU进程将不会启动。
                 chrome_options.add_argument('--disable-dev-shm-usage')
                 chrome_options.add_argument('--window-size=1920,1080')  # 设置当前窗口的宽度和高度
-                driver = webdriver.Chrome(self.dir+'chromedriver', chrome_options=chrome_options)
+                driver = webdriver.Chrome(executable_path=self.chrome_driver_path, chrome_options=chrome_options)
                 mylogger.info('启动%s 浏览器'%browser)
             else:
                 driver=webdriver.Chrome(executable_path=self.chrome_driver_path)

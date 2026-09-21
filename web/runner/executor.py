@@ -53,6 +53,65 @@ from tools.HTMLTestRunner_cn_echarts2 import (  # noqa: E402
     HTMLTestRunner, _TestResult, PY3K, SHOT_FIX_SCRIPT,
 )
 
+# ---------------------------------------------------------------- 异常日志
+# 详细异常堆栈统一写到项目日志文件 Logs/run_errors.log（与框架步骤日志 logs.log 分开，
+# 避免和它的按天滚动 handler 抢同一个文件描述符）；Web 执行记录里只放一行「大概说明」。
+import logging as _logging
+import traceback as _traceback
+
+_RUN_LOG_DIR = os.path.join(str(settings.PROJECT_ROOT), 'Logs')
+os.makedirs(_RUN_LOG_DIR, exist_ok=True)
+_run_error_loggers = {}
+
+
+def _detail_logger(pk):
+    """按执行记录 pk 取一个写 Logs/run_errors.log 的 logger（按名缓存，避免重复挂 handler）。"""
+    name = 'yikeui.run_err.%s' % pk
+    lg = _run_error_loggers.get(name)
+    if lg is None:
+        lg = _logging.getLogger(name)
+        if not lg.handlers:
+            fh = _logging.FileHandler(
+                os.path.join(_RUN_LOG_DIR, 'run_errors.log'), encoding='utf-8')
+            fh.setLevel(_logging.DEBUG)
+            fh.setFormatter(_logging.Formatter(
+                '%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+            lg.addHandler(fh)
+            lg.setLevel(_logging.DEBUG)
+            lg.propagate = False
+        _run_error_loggers[name] = lg
+    return lg
+
+
+def _current_step_desc():
+    """读取框架当前正在执行的步骤描述（executeCase 每步更新 CURRENT_STEP_DESC）。
+
+    拿不到就返回空串 —— 异常摘要里「具体步骤」部分可省略，不影响「状态 + 具体错误」。
+    """
+    try:
+        from framework import keywordsFrameword as _kw
+        return getattr(_kw, 'CURRENT_STEP_DESC', '') or ''
+    except Exception:
+        return ''
+
+
+def _step_reporter(pk, stop_event):
+    """后台线程：每 ~1s 把框架当前步骤同步到 TaskRun.current_step，供前端「执行中」展示。
+
+    框架在 executeCase 每步开始时写入 CURRENT_STEP_DESC；这里用 .update() 直接落库，
+    避免和 ProgressResult 的 save 互相干扰（各自 update_fields 不同字段）。
+    """
+    last = None
+    while not stop_event.is_set():
+        try:
+            desc = _current_step_desc()
+            if desc and desc != last:
+                TaskRun.objects.filter(pk=pk).update(current_step=desc)
+                last = desc
+        except Exception:
+            pass
+        stop_event.wait(1.0)
+
 
 # ---------------------------------------------------------------- 并发控制
 # 同一时刻只允许一轮执行。非阻塞 acquire：拿不到就直接拒绝，而不是排队。
@@ -124,10 +183,31 @@ class ProgressResult(_TestResult):
             pass
 
     def _label(self, test):
-        return getattr(test, '_testMethodName', '') or str(test)
+        # 用例方法运行时（getTestFunc 内）已设置 tcid/casename，优先用最准的那个
+        tcid = getattr(test, 'tcid', None)
+        casename = getattr(test, 'casename', None)
+        if tcid and casename:
+            return '%s · %s' % (tcid, casename)
+        # startTest 阶段方法还没跑，tcid 尚不存在，用生成时登记的元信息翻译方法名
+        name = getattr(test, '_testMethodName', '') or ''
+        if name:
+            try:
+                from framework import keywordsFrameword as _kw
+                translated = _kw.case_label(name)
+                if translated:
+                    return translated
+            except Exception:
+                pass
+        return name
 
     def startTest(self, test):
         super().startTest(test)
+        # 重置框架「当前步骤」：上一个用例残留的步骤描述不应显示到本用例的「执行中」
+        try:
+            from framework import keywordsFrameword as _kw
+            _kw.CURRENT_STEP_DESC = ''
+        except Exception:
+            pass
         # 收到停止指令：不再启动后续用例（unittest 的 shouldStop 会中断整个 suite）
         from framework import datasource
         if datasource.is_cancel_requested():
@@ -143,7 +223,12 @@ class ProgressResult(_TestResult):
         line = '[%s] %s\n' % (status, self._label(test))
         tail = (self.task_run.log_tail or '') + line
         self.task_run.log_tail = tail[-4000:]
-        self._save(**{field: getattr(self.task_run, field), 'log_tail': self.task_run.log_tail})
+        # 失败时把「当前步骤」也更新为真正出错的步骤（框架已在每步写入 CURRENT_STEP_DESC）
+        self.task_run.current_step = _current_step_desc() or self.task_run.current_step
+        self._save(**{field: getattr(self.task_run, field),
+                      'log_tail': self.task_run.log_tail,
+                      'error_summary': self.task_run.error_summary,
+                      'current_step': self.task_run.current_step})
 
     def addSuccess(self, test):
         super().addSuccess(test)
@@ -158,12 +243,58 @@ class ProgressResult(_TestResult):
             return
         self._bump('passed', test, '通过')
 
+    def _summarize_err(self, err):
+        """从 unittest 的 err 三要素（type, value, traceback）里抽一行简要说明。
+
+        assertEqual/assertIn 等断言失败时，evalue 会附带 unittest 自动生成的对齐
+        差异行（形如「- 期望\\n? ...\\n+ 实际」），冗余且无价值；核心比较信息永远在
+        第一行，这里只取第一行，去掉差异行。
+        """
+        etype, evalue, _tb = err
+        name = getattr(etype, '__name__', str(etype))
+        msg = str(evalue)
+        if etype is AssertionError:
+            lines = [ln.strip() for ln in msg.splitlines() if ln.strip()]
+            if lines:
+                msg = lines[0]
+        msg = ' '.join(msg.split())  # 折叠换行/多余空白
+        return '%s: %s' % (name, msg[:200])
+
+    def _append_summary(self, line):
+        if self.task_run is None:
+            return
+        cur = (self.task_run.error_summary or '')
+        cur = (cur + '\n' + line) if cur else line
+        self.task_run.error_summary = cur[-1500:]
+
     def addFailure(self, test, err):
         super().addFailure(test, err)
+        label = self._label(test)
+        step = _current_step_desc()
+        # 文案格式：[失败] 步骤「<具体步骤>」<具体错误>
+        line = '[失败]%s%s' % (
+            (' 步骤「%s」' % step) if step else ' ',
+            self._summarize_err(err))
+        self._append_summary(line)
+        if self.task_run is not None:
+            _detail_logger(self.task_run.pk).error(
+                '用例执行失败 | 用例:%s | 步骤:%s\n%s', label, step,
+                ''.join(_traceback.format_exception(*err)))
         self._bump('failed', test, '失败')
 
     def addError(self, test, err):
         super().addError(test, err)
+        label = self._label(test)
+        step = _current_step_desc()
+        # 文案格式：[异常] 步骤「<具体步骤>」<具体错误>
+        line = '[异常]%s%s' % (
+            (' 步骤「%s」' % step) if step else ' ',
+            self._summarize_err(err))
+        self._append_summary(line)
+        if self.task_run is not None:
+            _detail_logger(self.task_run.pk).error(
+                '用例执行异常 | 用例:%s | 步骤:%s\n%s', label, step,
+                ''.join(_traceback.format_exception(*err)))
         self._bump('error', test, '异常')
 
 
@@ -331,19 +462,31 @@ def execute(task_run):
         # 报告只存「文件名」，绝对路径由 TaskRun.report_abspath 计算（换机器也不失效）
         report_name = 'result_%s.html' % task_run.pk
         report_path = os.path.join(REPORTS_DIR, report_name)
-        with open(report_path, 'wb') as fp:
-            runner = LiveHTMLTestRunner(
-                stream=fp,
-                title='自动化测试报告',
-                description=task_run.case_filter,
-                verbosity=2,
-                task_run=task_run,
-                # 截图落盘：写成独立 png，报告里用 URL 引用，避免 base64 撑爆报告体积
-                shots_dir=SHOTS_DIR,
-                shots_url='/runs/%s/shots/' % task_run.pk,
-                shots_prefix='run_%s' % task_run.pk,
-            )
-            result = runner.run(suite)
+        # 步骤同步线程：让「执行中」状态能实时显示当前步骤（而非用例名）
+        _stop = threading.Event()
+        _reporter = threading.Thread(
+            target=_step_reporter, args=(task_run.pk, _stop), daemon=True)
+        _reporter.start()
+        try:
+            with open(report_path, 'wb') as fp:
+                runner = LiveHTMLTestRunner(
+                    stream=fp,
+                    title='自动化测试报告',
+                    description=task_run.case_filter,
+                    verbosity=2,
+                    task_run=task_run,
+                    # 截图落盘：写成独立 png，报告里用 URL 引用，避免 base64 撑爆报告体积
+                    shots_dir=SHOTS_DIR,
+                    shots_url='/runs/%s/shots/' % task_run.pk,
+                    shots_prefix='run_%s' % task_run.pk,
+                )
+                result = runner.run(suite)
+        finally:
+            _stop.set()
+            try:
+                _reporter.join(timeout=2)
+            except Exception:
+                pass
 
         _localize_report(report_path)
 
@@ -358,10 +501,14 @@ def execute(task_run):
         task_run.status = status
         task_run.report_path = report_name
     except Exception as e:
-        import traceback as _tb
         task_run.status = TaskRun.STATUS_ERROR
+        task_run.error_summary = ('[引擎异常] %s: %s' % (type(e).__name__, e)).replace('\n', ' ')[:300]
         task_run.log_tail = (task_run.log_tail or '') + \
-            '\n[执行异常] %s\n%s' % (e, _tb.format_exc())
+            '\n[执行异常] %s\n%s' % (e, _traceback.format_exc())
+        try:
+            _detail_logger(task_run.pk).error('执行引擎异常\n%s', _traceback.format_exc())
+        except Exception:
+            pass
     finally:
         # 停止 / 超时优先于正常结果，避免被 passed 覆盖
         try:

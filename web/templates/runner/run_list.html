@@ -77,6 +77,9 @@
                                 {% else %}
                                     {{ r.case_filter }}
                                 {% endif %}
+                                {% if r.error_summary %}
+                                    <div style="margin-top:4px;color:#b42318;white-space:pre-wrap;font-size:12px">{{ r.error_summary|truncatechars:90 }}</div>
+                                {% endif %}
                             </td>
                             <td>{{ r.passed }} / {{ r.failed }} / {{ r.error }}</td>
                             <td>{% if r.duration %}{{ r.duration }}s{% else %}-{% endif %}</td>
