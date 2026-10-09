@@ -739,18 +739,19 @@ class ScopeResolveTests(DjangoTestCase):
         TestCase.objects.create(tcid='c_other', need_run=True, tags='权限')
 
     def test_all_enabled(self):
-        self.assertIsNone(executor._resolve_scope('全部启用用例'))
+        self.assertEqual(executor._resolve_scope('全部启用用例'), (None, False))
 
     def test_single_case(self):
-        self.assertEqual(executor._resolve_scope('CASE:c_other'), ['c_other'])
+        self.assertEqual(executor._resolve_scope('CASE:c_other'), (['c_other'], True))
 
     def test_case_list(self):
         self.assertEqual(executor._resolve_scope('CASES:c_smoke1,c_other'),
-                         ['c_smoke1', 'c_other'])
+                         (['c_smoke1', 'c_other'], True))
 
     def test_tag_scope_skips_disabled(self):
-        scope = executor._resolve_scope('TAGS:冒烟')
-        self.assertEqual(sorted(scope), ['c_smoke1', 'c_smoke2'],
+        tcids, bypass = executor._resolve_scope('TAGS:冒烟')
+        self.assertFalse(bypass, '标签范围不应绕过用例启用开关')
+        self.assertEqual(sorted(tcids), ['c_smoke1', 'c_smoke2'],
                          '带标签但未启用的用例不应被拉进来')
 
 

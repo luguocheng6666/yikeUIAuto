@@ -42,7 +42,7 @@
                     <tr class="row-link" onclick="location.href='{% url 'runner:run_detail' run.pk %}'">
                         <td>{{ run.pk }}</td>
                         <td>{{ run.get_status_display }}</td>
-                        <td>{{ run.case_filter }}</td>
+                        <td>{{ run.scope_display }}</td>
                         <td>{{ run.passed }} / {{ run.failed }} / {{ run.error }}</td>
                         <td>{% if run.duration %}{{ run.duration|floatformat:1 }}s{% else %}-{% endif %}</td>
                         <td>{{ run.created_at|date:"Y-m-d H:i" }}</td>

@@ -98,17 +98,20 @@ class Keyword(unittest.TestCase):
         """获取所有有效的testcases"""
         mylog.info("getAllTestCase")
         dataList = []
+        # 显式勾选(CASES:/CASE:)时绕过「用例是否启用」开关：勾了就要跑；
+        # 标签范围 / 全部启用用例仍只跑启用的用例（保持原语义）。
+        bypass = datasource.get_bypass_need_run()
 
         suitList = [
             suit
             for suit in case_file.get_xls(SuitSheet)
-            if suit[AcaseIsNeedDo].lower() == "y"
+            if bypass or suit[AcaseIsNeedDo].lower() == "y"
         ]
 
         all_rows_list = [
             case
             for case in case_file.get_xls(DataSheet)
-            if case[Runmode].lower() == "y"
+            if bypass or case[Runmode].lower() == "y"
         ]
 
         for row in suitList:
@@ -126,9 +129,9 @@ class Keyword(unittest.TestCase):
                 print(caseName, caseDescribe)
                 mylog.error("用例名称或者用例描述为空！！！")
 
-            if caseIsNeedDo.lower() == "y":
+            if bypass or caseIsNeedDo.lower() == "y":
                 for case in all_rows_list:
-                    if (case[Runmode].lower() == "y") & (case[TCID] == caseNum):
+                    if (bypass or case[Runmode].lower() == "y") & (case[TCID] == caseNum):
                         try:
                             cycle = int(case[Cycle])
                             if cycle == 0:

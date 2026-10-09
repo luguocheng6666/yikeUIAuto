@@ -23,19 +23,33 @@ import os
 # 可被后台线程改写，用于限定本次执行范围（tcid 列表）
 _RUN_SCOPE = None
 
+# 是否跳过「用例级是否需要执行」过滤：仅当用户在 Web/定时里**显式勾选**具体用例
+# （CASES:/CASE: 范围）时为 True —— 勾了就要跑，不看用例是否启用；
+# 标签范围(TAGS:)与「全部启用用例」保持原语义，仍只跑启用的用例。
+_BYPASS_NEED_RUN = False
+
 # 「停止执行」标志：Web 端点停止后由后台线程置位，引擎每执行一步检查一次，
 # 置位后当前用例会跳过剩余步骤、后续用例不再启动（命令行模式永远为 False）。
 _CANCEL_REQUESTED = False
 
 
-def set_run_scope(tcids):
-    """限定本次只执行这些 TCID 的用例；传 None 表示不限制。"""
-    global _RUN_SCOPE
+def set_run_scope(tcids, bypass_need_run=False):
+    """限定本次只执行这些 TCID 的用例；传 None 表示不限制。
+
+    bypass_need_run=True 时，框架不再用用例级「是否需要执行」开关过滤，
+    即显式勾选的用例一律执行（勾了就要跑）。默认 False（保持原语义）。
+    """
+    global _RUN_SCOPE, _BYPASS_NEED_RUN
     _RUN_SCOPE = list(tcids) if tcids else None
+    _BYPASS_NEED_RUN = bool(bypass_need_run)
 
 
 def get_run_scope():
     return _RUN_SCOPE
+
+
+def get_bypass_need_run():
+    return _BYPASS_NEED_RUN
 
 
 def request_cancel():

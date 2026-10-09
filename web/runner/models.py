@@ -31,9 +31,12 @@ class TaskRun(models.Model):
 
     current_step = models.CharField('当前步骤', max_length=300, blank=True, default='')
     log_tail = models.TextField('日志尾部', blank=True, default='')
-    # 异常摘要：失败/异常时写入一行行「大概说明」（异常类型 + 消息 + 出错的用例），
-    # 在执行列表/详情页直接展示；完整堆栈另落项目日志文件 Logs/run_errors.log。
+    # 异常信息分两层（在 ProgressResult.addFailure/addError 里同步写入）：
+    #  error_summary —— 精简版「[失败/异常] 用例「用例」步骤「步骤」」，给执行列表「执行范围」列用，不堆长错误；
+    #  error_detail  —— 完整版（在精简版基础上再附「具体错误」），给执行详情页「异常说明」框用；
+    #  完整堆栈另落项目日志文件 Logs/run_errors.log。
     error_summary = models.TextField('异常摘要', blank=True, default='')
+    error_detail = models.TextField('异常详情（含具体错误）', blank=True, default='')
     cancel_requested = models.BooleanField('已请求停止', default=False)
 
     started_at = models.DateTimeField('开始时间', null=True, blank=True)
@@ -59,6 +62,32 @@ class TaskRun(models.Model):
 
     def __str__(self):
         return '#%s %s' % (self.pk, self.get_status_display())
+
+    def scope_text(self):
+        """执行范围的友好展示，与 SchedulePlan.scope_text 保持一致：
+        全部启用用例 -> '全部启用用例'；按标签 -> '标签 X'；指定用例 -> '指定 N 条'。
+        （N 为勾选的用例条数，非实际跑的条数——实际条数看「用例总数」列。）
+        """
+        cf = (self.case_filter or '').strip()
+        if cf.startswith('TAGS:'):
+            return '标签 %s' % cf[5:]
+        if cf.startswith('CASES:'):
+            n = len([x for x in cf[6:].split(',') if x.strip()])
+            return '指定 %s 条' % n
+        if cf.startswith('CASE:'):
+            return '指定 1 条'
+        return '全部启用用例'
+
+    def scope_display(self):
+        '''首页/报告「范围」展示：指定用例(CASES:/CASE:) -> 「指定 N 条」，
+        标签(TAGS:xxx)/全部启用用例保持原样（按用户要求不动标签显示）。'''
+        cf = (self.case_filter or '').strip()
+        if cf.startswith('CASES:'):
+            n = len([x for x in cf[6:].split(',') if x.strip()])
+            return '指定 %s 条' % n
+        if cf.startswith('CASE:'):
+            return '指定 1 条'
+        return cf
 
     @property
     def is_finished(self):

@@ -162,6 +162,45 @@ def mark_stale_runs():
     return n
 
 
+def _humanize(etype, msg):
+    """把常见技术异常映射成一句人话解读（仅辅助展示，绝不替换原文）。
+
+    返回空串表示没有可附加的提示；调用方决定是否拼接到摘要里。
+    """
+    name = getattr(etype, '__name__', str(etype))
+    m = (msg or '').lower()
+    hints = {
+        'AttributeError': '推测：动作对象缺少所需属性，通常是前序步骤（如「打开浏览器」）失败，'
+                          '导致后续动作拿不到浏览器驱动',
+        'NoSuchElementException': '推测：未找到元素，定位表达式可能已失效，或页面尚未加载完成',
+        'TimeoutException': '推测：等待元素/条件超时，可检查网络或适当延长等待时间',
+        'ElementNotVisibleException': '推测：元素存在但不可见，可能未滚动到可视区或被遮挡',
+        'ElementNotInteractableException': '推测：元素不可交互，可能处于禁用/只读/动画过渡中',
+        'SessionNotCreatedException': '推测：浏览器会话创建失败，多为 chromedriver 与 Chrome 版本不匹配',
+        'WebDriverException': '推测：浏览器驱动异常，检查 chromedriver 与 Chrome 是否匹配、浏览器是否可启动',
+        'AssertionError': '推测：断言失败，实际结果与期望不符（详见上方比较）',
+        'ImportError': '推测：缺少依赖模块，请在运行环境执行 pip install -r requirements.txt',
+        'ModuleNotFoundError': '推测：缺少依赖模块，请在运行环境执行 pip install -r requirements.txt',
+        'ConnectionError': '推测：连接被测系统失败，检查地址/端口/网络是否可达',
+        'TimeoutError': '推测：请求超时，被测系统无响应或响应过慢',
+    }
+    hint = hints.get(name)
+    if not hint:
+        if 'session not created' in m:
+            hint = hints['SessionNotCreatedException']
+        elif 'no such element' in m:
+            hint = hints['NoSuchElementException']
+        elif 'element is not visible' in m or 'not visible' in m:
+            hint = hints['ElementNotVisibleException']
+        elif 'element not interactable' in m:
+            hint = hints['ElementNotInteractableException']
+        elif 'timed out' in m or 'timeout' in m:
+            hint = hints['TimeoutException']
+        elif 'chromedriver' in m or 'chrome' in m:
+            hint = hints['WebDriverException']
+    return hint or ''
+
+
 class ProgressResult(_TestResult):
     '''在 _TestResult 基础上，把进度实时写回 TaskRun。'''
 
@@ -200,6 +239,24 @@ class ProgressResult(_TestResult):
                 pass
         return name
 
+    def _case_id(self, test):
+        # 异常摘要里的「用例名」只取 TCID（如 open_baidu），不带「·名称」；
+        # 报告里的「测试用例」列才展示完整的「TCID · 用例名称」标签。
+        tcid = getattr(test, 'tcid', None)
+        if tcid:
+            return tcid
+        # startTest 阶段 tcid 可能尚未绑定，用登记的方法名反查（只取 TCID 部分）
+        name = getattr(test, '_testMethodName', '') or ''
+        if name:
+            try:
+                from framework import keywordsFrameword as _kw
+                translated = _kw.case_label(name)
+                if translated and ' · ' in translated:
+                    return translated.split(' · ')[0]
+            except Exception:
+                pass
+        return name
+
     def startTest(self, test):
         super().startTest(test)
         # 重置框架「当前步骤」：上一个用例残留的步骤描述不应显示到本用例的「执行中」
@@ -228,6 +285,7 @@ class ProgressResult(_TestResult):
         self._save(**{field: getattr(self.task_run, field),
                       'log_tail': self.task_run.log_tail,
                       'error_summary': self.task_run.error_summary,
+                      'error_detail': self.task_run.error_detail,
                       'current_step': self.task_run.current_step})
 
     def addSuccess(self, test):
@@ -248,7 +306,7 @@ class ProgressResult(_TestResult):
 
         assertEqual/assertIn 等断言失败时，evalue 会附带 unittest 自动生成的对齐
         差异行（形如「- 期望\\n? ...\\n+ 实际」），冗余且无价值；核心比较信息永远在
-        第一行，这里只取第一行，去掉差异行。
+        第一行，这里只取第一行，去掉差异行。末尾追加一句人话解读（_humanize）。
         """
         etype, evalue, _tb = err
         name = getattr(etype, '__name__', str(etype))
@@ -258,7 +316,9 @@ class ProgressResult(_TestResult):
             if lines:
                 msg = lines[0]
         msg = ' '.join(msg.split())  # 折叠换行/多余空白
-        return '%s: %s' % (name, msg[:200])
+        core = '%s: %s' % (name, msg[:200])
+        hint = _humanize(etype, msg)
+        return ('%s（%s）' % (core, hint)) if hint else core
 
     def _append_summary(self, line):
         if self.task_run is None:
@@ -267,33 +327,40 @@ class ProgressResult(_TestResult):
         cur = (cur + '\n' + line) if cur else line
         self.task_run.error_summary = cur[-1500:]
 
+    def _append_detail(self, line):
+        if self.task_run is None:
+            return
+        cur = (self.task_run.error_detail or '')
+        cur = (cur + '\n' + line) if cur else line
+        self.task_run.error_detail = cur[-3000:]
+
     def addFailure(self, test, err):
         super().addFailure(test, err)
-        label = self._label(test)
+        cid = self._case_id(test)
         step = _current_step_desc()
-        # 文案格式：[失败] 步骤「<具体步骤>」<具体错误>
-        line = '[失败]%s%s' % (
-            (' 步骤「%s」' % step) if step else ' ',
-            self._summarize_err(err))
-        self._append_summary(line)
+        # 列表：只展示「用例名 + 步骤」（不含具体错误）
+        s_line = ('[失败] %s，步骤「%s」' % (cid, step)) if step else ('[失败] %s' % cid)
+        self._append_summary(s_line)
+        # 详情：再加上具体错误
+        self._append_detail('%s，Exception: %s' % (s_line, self._summarize_err(err)))
         if self.task_run is not None:
             _detail_logger(self.task_run.pk).error(
-                '用例执行失败 | 用例:%s | 步骤:%s\n%s', label, step,
+                '用例执行失败 | 用例:%s | 步骤:%s\n%s', self._label(test), step,
                 ''.join(_traceback.format_exception(*err)))
         self._bump('failed', test, '失败')
 
     def addError(self, test, err):
         super().addError(test, err)
-        label = self._label(test)
+        cid = self._case_id(test)
         step = _current_step_desc()
-        # 文案格式：[异常] 步骤「<具体步骤>」<具体错误>
-        line = '[异常]%s%s' % (
-            (' 步骤「%s」' % step) if step else ' ',
-            self._summarize_err(err))
-        self._append_summary(line)
+        # 列表：只展示「用例名 + 步骤」（不含具体错误）
+        s_line = ('[异常] %s，步骤「%s」' % (cid, step)) if step else ('[异常] %s' % cid)
+        self._append_summary(s_line)
+        # 详情：再加上具体错误
+        self._append_detail('%s，Exception: %s' % (s_line, self._summarize_err(err)))
         if self.task_run is not None:
             _detail_logger(self.task_run.pk).error(
-                '用例执行异常 | 用例:%s | 步骤:%s\n%s', label, step,
+                '用例执行异常 | 用例:%s | 步骤:%s\n%s', self._label(test), step,
                 ''.join(_traceback.format_exception(*err)))
         self._bump('error', test, '异常')
 
@@ -393,24 +460,22 @@ def request_cancel(pk):
 
 
 def _resolve_scope(case_filter):
-    '''把 TaskRun.case_filter 翻译成具体的 tcid 列表（None = 不限，跑全部启用用例）。
+    '''把 TaskRun.case_filter 翻译成 (tcid 列表, 是否绕过「用例启用」开关)。
 
-    支持的写法：
-        ''                  -> 全部启用用例
-        'CASE:<tcid>'       -> 单条用例
-        'CASES:<a>,<b>'     -> 指定的若干条
-        'TAGS:<甲>+<乙>'     -> 带这些标签之一的全部启用用例（执行时现算，标签成员变了也跟着变）
+    返回 (None, False) 表示不限制（跑全部启用用例）；
+    CASES:/CASE: 显式勾选 -> (tcids, True)：勾了就要跑，不再看用例是否启用；
+    TAGS: 标签范围 -> (tcids, False)：与「执行全部」一致，仍只跑启用的用例。
     '''
     cf = (case_filter or '').strip()
     if not cf.startswith(('CASE:', 'CASES:', 'TAGS:')):
-        return None
+        return None, False
     if cf.startswith('CASE:'):
-        return [cf.split(':', 1)[1]]
+        return [cf.split(':', 1)[1]], True
     if cf.startswith('CASES:'):
-        return [t for t in cf.split(':', 1)[1].split(',') if t]
+        return [t for t in cf.split(':', 1)[1].split(',') if t], True
     tags = [t for t in cf.split(':', 1)[1].split('+') if t]
     if not tags:
-        return None
+        return None, False
     from cases.models import TestCase
     q = None
     for t in tags:
@@ -418,7 +483,7 @@ def _resolve_scope(case_filter):
         q = cond if q is None else (q | cond)
     # 只跑启用用例 —— 与「执行全部」的语义保持一致
     return list(TestCase.objects.filter(need_run=True)
-                .filter(q).order_by('tcid').values_list('tcid', flat=True))
+                .filter(q).order_by('tcid').values_list('tcid', flat=True)), False
 
 
 def execute(task_run):
@@ -438,8 +503,8 @@ def execute(task_run):
         datasource.clear_cancel()
 
         # 执行范围：'' 表示不限（全部启用用例），其余见 _resolve_scope
-        scope = _resolve_scope(task_run.case_filter)
-        datasource.set_run_scope(scope)
+        scope, bypass = _resolve_scope(task_run.case_filter)
+        datasource.set_run_scope(scope, bypass_need_run=bypass)
 
         suite = _build_suite()
         total = suite.countTestCases()
@@ -472,7 +537,9 @@ def execute(task_run):
                 runner = LiveHTMLTestRunner(
                     stream=fp,
                     title='自动化测试报告',
-                    description=task_run.case_filter,
+                    # 报告「描述」：指定用例(CASES:/CASE:)只显示「指定 N 条」，避免用例名堆一长串很乱；
+                    # 标签(TAGS:xxx)与「全部启用用例」保持原样展示（按用户要求不动标签显示）。
+                    description=task_run.scope_display(),
                     verbosity=2,
                     task_run=task_run,
                     # 截图落盘：写成独立 png，报告里用 URL 引用，避免 base64 撑爆报告体积
@@ -502,7 +569,9 @@ def execute(task_run):
         task_run.report_path = report_name
     except Exception as e:
         task_run.status = TaskRun.STATUS_ERROR
-        task_run.error_summary = ('[引擎异常] %s: %s' % (type(e).__name__, e)).replace('\n', ' ')[:300]
+        task_run.error_summary = ('[引擎异常] %s' % type(e).__name__)[:300]
+        task_run.error_detail = ('[引擎异常] %s，Exception: %s'
+                                 % (type(e).__name__, e)).replace('\n', ' ')[:1500]
         task_run.log_tail = (task_run.log_tail or '') + \
             '\n[执行异常] %s\n%s' % (e, _traceback.format_exc())
         try:
